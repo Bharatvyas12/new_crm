@@ -1,0 +1,72 @@
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from app.config import settings
+from app.exceptions import AppError
+
+from app.routers import (
+    auth,
+    employees,
+    attendance,
+    tasks,
+    orders,
+    leaves,
+    ledger,
+    complaints,
+    payroll,
+    roles,
+    settings as settings_router,
+)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title=settings.PROJECT_NAME,
+        version="1.0.0",
+        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        docs_url=f"{settings.API_V1_STR}/docs",
+    )
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Custom exception handler
+    @app.exception_handler(AppError)
+    async def app_error_handler(request: Request, exc: AppError):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "error_code": exc.error_code,
+                **({"extra": exc.extra} if exc.extra else {}),
+            },
+        )
+
+    # Register all routers
+    prefix = settings.API_V1_STR
+    app.include_router(auth.router, prefix=prefix)
+    app.include_router(employees.router, prefix=prefix)
+    app.include_router(attendance.router, prefix=prefix)
+    app.include_router(tasks.router, prefix=prefix)
+    app.include_router(orders.router, prefix=prefix)
+    app.include_router(leaves.router, prefix=prefix)
+    app.include_router(ledger.router, prefix=prefix)
+    app.include_router(complaints.router, prefix=prefix)
+    app.include_router(payroll.router, prefix=prefix)
+    app.include_router(roles.router, prefix=prefix)
+    app.include_router(settings_router.router, prefix=prefix)
+
+    @app.get("/health")
+    async def health_check():
+        return {"status": "healthy", "version": "1.0.0"}
+
+    return app
+
+
+app = create_app()

@@ -1,0 +1,9 @@
+fastapi[standard]
+uvicorn[standard]
+sqlalchemy[asyncio]>=2.0
+psycopg[binary,pool]
+alembic
+pydantic-settings
+argon2-cffi
+python-multipart
+httpx
