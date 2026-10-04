@@ -16,6 +16,7 @@ from app.routers import (
     payroll,
     roles,
     settings as settings_router,
+    sync,
 )
 
 
@@ -27,10 +28,10 @@ def create_app() -> FastAPI:
         docs_url=f"{settings.API_V1_STR}/docs",
     )
 
-    # CORS middleware
+    # Permissive CORS middleware for cross-origin web/mobile clients
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origin_list,
+        allow_origin_regex=r"^https?:\/\/.*$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(payroll.router, prefix=prefix)
     app.include_router(roles.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)
+    app.include_router(sync.router, prefix=prefix)
 
     @app.get("/health")
     async def health_check():

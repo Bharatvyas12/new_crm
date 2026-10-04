@@ -34,8 +34,53 @@ export default function AdminAttendanceRegisterPage() {
   useEffect(() => {
     const loadRecords = () => {
       const store = getCRMStore();
-      setRecords(store.attendance || []);
+      const atts = store.attendance || [];
+      const employees = store.employees || [];
+      const activeShifts = store.activeShifts || {};
+      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+
+      // Build today's live employee roster
+      const todayRecords: AttendanceRecord[] = employees.map((emp) => {
+        const existing = atts.find((a) => a.employeeCode === emp.code && a.date === today);
+        if (existing) return existing;
+        const shift = activeShifts[emp.code];
+        if (shift && shift.date === today && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) {
+          const elapsedHours = Number(((Date.now() - shift.checkInTimestamp) / 3600000).toFixed(1));
+          return {
+            id: `att-live-${emp.code}`,
+            employeeName: emp.name,
+            employeeCode: emp.code,
+            department: emp.department,
+            date: today,
+            checkIn: shift.checkInTime,
+            checkOut: "—",
+            workedHours: elapsedHours > 0 ? elapsedHours : 0.1,
+            overtimeHours: 0,
+            classification: "PARTIAL_DAY",
+            status: "Present",
+            distanceM: shift.distanceM,
+          };
+        }
+        return {
+          id: `att-absent-${emp.code}`,
+          employeeName: emp.name,
+          employeeCode: emp.code,
+          department: emp.department,
+          date: today,
+          checkIn: "—",
+          checkOut: "—",
+          workedHours: 0,
+          overtimeHours: 0,
+          classification: "ABSENT",
+          status: "Absent",
+          distanceM: 0,
+        };
+      });
+
+      const pastRecords = atts.filter((a) => a.date !== today);
+      setRecords([...todayRecords, ...pastRecords]);
     };
+
     loadRecords();
     const unsubscribe = subscribeToCRMStore(loadRecords);
     return () => unsubscribe();
@@ -62,7 +107,7 @@ export default function AdminAttendanceRegisterPage() {
 
   const getStatusBadge = (classification: string, status: string) => {
     if (status === "Absent" || classification === "ABSENT") {
-      return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fce8e6] text-[#c5221f]">Absent</span>;
+      return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fce8e6] text-[#c5221f]">Not Checked In / Absent</span>;
     }
     switch (classification) {
       case "FULL_DAY":
@@ -70,7 +115,7 @@ export default function AdminAttendanceRegisterPage() {
       case "HALF_DAY":
         return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fef7e0] text-[#b06000]">Half Day (≥5h)</span>;
       case "PARTIAL_DAY":
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">In Progress / Partial</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Present (Active Shift)</span>;
       default:
         return <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100">{status || classification}</span>;
     }
@@ -79,7 +124,7 @@ export default function AdminAttendanceRegisterPage() {
   const presentCount = records.filter((r) => r.status === "Present").length;
   const fullDayCount = records.filter((r) => r.classification === "FULL_DAY").length;
   const halfOrPartialCount = records.filter((r) => r.classification === "HALF_DAY" || r.classification === "PARTIAL_DAY").length;
-  const absentCount = records.filter((r) => r.status === "Absent").length;
+  const absentCount = records.filter((r) => r.status === "Absent" || r.classification === "ABSENT").length;
 
   return (
     <div className="space-y-6">
@@ -136,7 +181,7 @@ export default function AdminAttendanceRegisterPage() {
           <span className="text-2xl font-bold font-mono text-amber-600 mt-1 block">{halfOrPartialCount}</span>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">ABSENT</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">NOT ON DUTY</span>
           <span className="text-2xl font-bold font-mono text-red-500 mt-1 block">{absentCount}</span>
         </div>
       </div>
@@ -195,7 +240,7 @@ export default function AdminAttendanceRegisterPage() {
                     <td className="py-3.5 px-5 text-slate-700 font-mono text-xs">{row.checkIn}</td>
                     <td className="py-3.5 px-5 text-slate-700 font-mono text-xs">{row.checkOut || "—"}</td>
                     <td className="py-3.5 px-5 font-mono font-bold text-slate-900 text-xs">
-                      {row.workedHours > 0 ? `${row.workedHours} hrs` : "In Progress"}
+                      {row.workedHours > 0 ? `${row.workedHours} hrs` : row.status === "Present" ? "In Progress" : "0 hrs"}
                     </td>
                     <td className="py-3.5 px-5 font-mono text-xs">
                       {row.overtimeHours > 0 ? (
@@ -206,7 +251,7 @@ export default function AdminAttendanceRegisterPage() {
                     </td>
                     <td className="py-3.5 px-5">{getStatusBadge(row.classification, row.status)}</td>
                     <td className="py-3.5 px-5 text-xs text-slate-600 font-mono">
-                      {row.distanceM > 0 ? `${row.distanceM}m from shop` : "Verified GPS"}
+                      {row.distanceM > 0 ? `${row.distanceM}m from shop` : row.status === "Present" ? "Verified GPS" : "—"}
                     </td>
                     <td className="py-3.5 px-5 text-right">
                       <button
@@ -240,61 +285,74 @@ export default function AdminAttendanceRegisterPage() {
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-700">Check In Time</label>
-                  <input
-                    type="text"
-                    value={editingRecord.checkIn}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, checkIn: e.target.value })}
-                    className="w-full h-9 px-3 border border-slate-200 rounded-xl font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-700">Check Out Time</label>
-                  <input
-                    type="text"
-                    value={editingRecord.checkOut}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, checkOut: e.target.value })}
-                    className="w-full h-9 px-3 border border-slate-200 rounded-xl font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Check In Time</label>
+                <input
+                  type="text"
+                  value={editingRecord.checkIn}
+                  onChange={(e) => setEditingRecord({ ...editingRecord, checkIn: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Check Out Time</label>
+                <input
+                  type="text"
+                  value={editingRecord.checkOut}
+                  onChange={(e) => setEditingRecord({ ...editingRecord, checkOut: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono focus:border-blue-500 focus:outline-none"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-700">Worked Hours</label>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Worked Hours</label>
                   <input
                     type="number"
                     step="0.1"
                     value={editingRecord.workedHours}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, workedHours: Number(e.target.value) })}
-                    className="w-full h-9 px-3 border border-slate-200 rounded-xl font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(e) => setEditingRecord({ ...editingRecord, workedHours: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono focus:border-blue-500 focus:outline-none"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-700">Overtime (Hours)</label>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Overtime Hours</label>
                   <input
                     type="number"
                     step="0.1"
                     value={editingRecord.overtimeHours}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, overtimeHours: Number(e.target.value) })}
-                    className="w-full h-9 px-3 border border-slate-200 rounded-xl font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(e) => setEditingRecord({ ...editingRecord, overtimeHours: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Classification</label>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Day Classification</label>
                 <select
                   value={editingRecord.classification}
                   onChange={(e) => setEditingRecord({ ...editingRecord, classification: e.target.value as any })}
-                  className="w-full h-9 px-3 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
                 >
-                  <option value="FULL_DAY">Full Day (≥10 hrs)</option>
-                  <option value="HALF_DAY">Half Day (≥5 hrs)</option>
-                  <option value="PARTIAL_DAY">Partial / In Progress</option>
-                  <option value="ABSENT">Absent (0 hrs)</option>
+                  <option value="FULL_DAY">Full Day (≥10h)</option>
+                  <option value="HALF_DAY">Half Day (≥5h)</option>
+                  <option value="PARTIAL_DAY">In Progress / Partial Day</option>
+                  <option value="ABSENT">Absent</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Attendance Status</label>
+                <select
+                  value={editingRecord.status}
+                  onChange={(e) => setEditingRecord({ ...editingRecord, status: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Late">Late</option>
+                  <option value="On Break">On Break</option>
                 </select>
               </div>
 
@@ -302,15 +360,16 @@ export default function AdminAttendanceRegisterPage() {
                 <button
                   type="button"
                   onClick={() => setEditingRecord(null)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl font-semibold"
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs transition-colors"
                 >
-                  Save Changes
+                  <Save size={13} />
+                  <span>Save Changes</span>
                 </button>
               </div>
             </form>

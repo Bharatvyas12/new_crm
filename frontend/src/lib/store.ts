@@ -1,6 +1,7 @@
 "use client";
 
-// Centralized Reactive Client Store with localStorage persistence for clean client testing
+// Centralized Reactive Client Store with Real-Time Cross-Device Cloud Sync
+import { pushStoreToCloud, initCloudSync } from "./syncEngine";
 
 export interface ShopSettings {
   shopName: string;
@@ -197,8 +198,8 @@ export interface CRMStoreData {
   complaints: ComplaintItem[];
 }
 
-// Clean baseline store data for clean client testing
-const cleanBaselineStore: CRMStoreData = {
+// Clean baseline store data for clean real-time operational use
+export const cleanBaselineStore: CRMStoreData = {
   settings: {
     shopName: "Vyas Enterprises & Wholesale Hub",
     ownerName: "Bharat Vyas",
@@ -213,7 +214,7 @@ const cleanBaselineStore: CRMStoreData = {
     requiredDailyHours: 10,
     gracePeriodMinutes: 15,
     qrRotationSeconds: 45,
-    lastUpdated: "Today",
+    lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
   },
   activeShifts: {},
   employees: [
@@ -275,217 +276,14 @@ const cleanBaselineStore: CRMStoreData = {
       sickLeaves: 8,
     },
   ],
-  advances: [
-    {
-      id: "adv-1",
-      employeeId: "2",
-      employee: "Bharat vyas",
-      code: "E001",
-      department: "Operations",
-      amount: 8000,
-      outstanding: 8000,
-      reason: "Medical emergency in family",
-      mode: "SALARY_DEDUCTION",
-      status: "Pending Approval",
-      requestedAt: "Sep 30, 2026",
-    },
-  ],
-  ledger: [
-    {
-      id: "led-1",
-      employeeName: "Bharat vyas",
-      employeeCode: "E001",
-      type: "SALARY_CREDIT",
-      amount: 35000,
-      paymentMode: "Bank Transfer",
-      referenceNo: "NEFT-HDFC-99214",
-      description: "Monthly salary payout for September 2026",
-      date: "Oct 01, 2026, 10:30 AM",
-      runningBalance: 35000,
-    },
-  ],
-  orders: [
-    {
-      id: "ord-1",
-      orderCode: "ORD-0001",
-      customerName: "Rahul Enterprises",
-      phone: "9876543210",
-      address: "Shop 14, Main Wholesale Market",
-      itemsCount: 15,
-      itemsDescription: "10x Industrial Cable rolls, 5x Switch boxes",
-      priority: "High",
-      receiptPhoto: "parchi_slip_01.jpg",
-      status: "Broadcasted",
-      notes: "Deliver before 5:00 PM today",
-      created: "Sep 28, 2026, 08:59 AM",
-    },
-  ],
-  tasks: [
-    {
-      id: "tsk-1",
-      title: "Warehouse Inventory Audit — Bay A",
-      description: "Perform physical count of all stock items in Bay A and report discrepancies.",
-      priority: "High",
-      status: "In Progress",
-      due: "Today, 5:00 PM",
-      assignee: "Bharat vyas",
-      assigneeCode: "E001",
-      created: "Oct 03, 2026, 09:00 AM",
-    },
-    {
-      id: "tsk-2",
-      title: "Equipment Calibration — Packaging Line 3",
-      description: "Calibrate packaging machines and upload inspection verification.",
-      priority: "Urgent",
-      status: "Submitted",
-      due: "Oct 03, 2026, 02:00 PM",
-      assignee: "Bharat vyas",
-      assigneeCode: "E001",
-      created: "Oct 02, 2026, 04:00 PM",
-      evidenceNote: "Machine pressure calibrated to 14.5 bar according to factory checklist.",
-      evidenceFile: "calibration_report.pdf",
-    },
-  ],
-  attendance: [
-    {
-      id: "att-1",
-      employeeName: "Bharat vyas",
-      employeeCode: "E001",
-      department: "Operations",
-      date: "Oct 03, 2026",
-      checkIn: "08:55 AM",
-      checkOut: "—",
-      workedHours: 3.6,
-      overtimeHours: 0,
-      classification: "PARTIAL_DAY",
-      status: "Present",
-      distanceM: 25,
-    },
-    {
-      id: "att-2",
-      employeeName: "Priya Sharma",
-      employeeCode: "EMP002",
-      department: "Sales",
-      date: "Oct 03, 2026",
-      checkIn: "—",
-      checkOut: "—",
-      workedHours: 0,
-      overtimeHours: 0,
-      classification: "ABSENT",
-      status: "Absent",
-      distanceM: 0,
-    },
-  ],
-  corrections: [
-    {
-      id: "corr-1",
-      employee: "Bharat vyas",
-      code: "E001",
-      department: "Operations",
-      date: "Oct 01, 2026",
-      originalTime: "Missed checkout (Auto 00:00)",
-      requestedTime: "07:05 PM",
-      reason: "Phone battery died while packing final customer shipment at counter.",
-      status: "Pending",
-      submittedAt: "Oct 01, 2026, 08:00 PM",
-    },
-    {
-      id: "corr-2",
-      employee: "Priya Sharma",
-      code: "EMP002",
-      department: "Sales",
-      date: "Sep 30, 2026",
-      originalTime: "09:40 AM (Late Check-in)",
-      requestedTime: "09:00 AM",
-      reason: "Direct client showroom meeting at Wholesale Center before reaching desk.",
-      status: "Pending",
-      submittedAt: "Sep 30, 2026, 10:00 AM",
-    },
-  ],
-  leaves: [
-    {
-      id: "lv-1",
-      employeeName: "Priya Sharma",
-      employeeCode: "EMP002",
-      department: "Sales",
-      leaveType: "Casual Leave",
-      startDate: "Oct 06, 2026",
-      endDate: "Oct 07, 2026",
-      period: "FULL_DAY",
-      days: 2,
-      reason: "Family function in hometown",
-      status: "PENDING",
-      appliedAt: "2 hours ago",
-      balanceRemaining: 8,
-      totalEntitlement: 12,
-    },
-    {
-      id: "lv-2",
-      employeeName: "Bharat vyas",
-      employeeCode: "E001",
-      department: "Operations",
-      leaveType: "Casual Leave",
-      startDate: "Oct 08, 2026",
-      endDate: "Oct 09, 2026",
-      period: "FULL_DAY",
-      days: 2,
-      reason: "Outstation urgent personal work",
-      status: "PENDING",
-      appliedAt: "1 day ago",
-      balanceRemaining: 8,
-      totalEntitlement: 12,
-    },
-  ],
-  complaints: [
-    {
-      id: "comp-1",
-      category: "Facility / Cleanliness",
-      subject: "Water cooler purifier filter replacement needed",
-      description: "The drinking water cooler near the packing bay has red indicator on. Filter needs replacement.",
-      raisedBy: "Bharat vyas",
-      employeeCode: "E001",
-      department: "Operations",
-      visibility: "PUBLIC",
-      priority: "MEDIUM",
-      status: "OPEN",
-      createdAt: "Oct 02, 2026, 11:30 AM",
-      comments: [
-        {
-          author: "Bharat vyas",
-          role: "EMPLOYEE",
-          text: "Water flow is slow and filter light is red.",
-          time: "Oct 02, 2026, 11:30 AM",
-        },
-      ],
-    },
-    {
-      id: "comp-2",
-      category: "Equipment & Tools",
-      subject: "Tape dispenser and thermal label roll shortage",
-      description: "Packaging bay running low on 3-inch brown packing tape rolls for outgoing dispatches.",
-      raisedBy: "Priya Sharma",
-      employeeCode: "EMP002",
-      department: "Sales",
-      visibility: "EMPLOYEE_PRIVATE",
-      priority: "HIGH",
-      status: "UNDER_INVESTIGATION",
-      createdAt: "Oct 01, 2026, 03:15 PM",
-      comments: [
-        {
-          author: "Priya Sharma",
-          role: "EMPLOYEE",
-          text: "Only 2 rolls left in stock.",
-          time: "Oct 01, 2026, 03:15 PM",
-        },
-        {
-          author: "System Admin",
-          role: "ADMIN",
-          text: "Vendor purchase order PO-8812 placed with local supplier. Delivery expected tomorrow morning.",
-          time: "Oct 01, 2026, 04:30 PM",
-        },
-      ],
-    },
-  ],
+  advances: [],
+  ledger: [],
+  orders: [],
+  tasks: [],
+  attendance: [],
+  corrections: [],
+  leaves: [],
+  complaints: [],
 };
 
 const STORAGE_KEY = "wcrm_unified_store_v2";
@@ -499,16 +297,20 @@ export const getCRMStore = (): CRMStoreData => {
       return cleanBaselineStore;
     }
     const parsed = JSON.parse(raw);
-    // Ensure all arrays exist
     return {
       ...cleanBaselineStore,
       ...parsed,
-      activeShifts: parsed.activeShifts || cleanBaselineStore.activeShifts || {},
-      orders: parsed.orders || cleanBaselineStore.orders,
-      tasks: parsed.tasks || cleanBaselineStore.tasks,
-      attendance: parsed.attendance || cleanBaselineStore.attendance,
-      corrections: parsed.corrections || cleanBaselineStore.corrections,
-      complaints: parsed.complaints || cleanBaselineStore.complaints,
+      activeShifts: parsed.activeShifts || {},
+      orders: parsed.orders || [],
+      tasks: parsed.tasks || [],
+      attendance: parsed.attendance || [],
+      corrections: parsed.corrections || [],
+      complaints: parsed.complaints || [],
+      advances: parsed.advances || [],
+      leaves: parsed.leaves || [],
+      ledger: parsed.ledger || [],
+      employees: parsed.employees || cleanBaselineStore.employees,
+      settings: parsed.settings || cleanBaselineStore.settings,
     };
   } catch (err) {
     console.error("Failed to load store:", err);
@@ -528,10 +330,11 @@ export const saveCRMStore = (data: CRMStoreData) => {
         const bc = new BroadcastChannel("wcrm_sync_channel");
         bc.postMessage({ type: "SYNC", timestamp: Date.now() });
         bc.close();
-      } catch (e) {
-        // fallback
-      }
+      } catch (e) {}
     }
+
+    // Push asynchronously to the cloud backend for cross-device sync
+    pushStoreToCloud(data);
   } catch (err) {
     console.error("Failed to save store:", err);
   }
@@ -539,21 +342,16 @@ export const saveCRMStore = (data: CRMStoreData) => {
 
 export const resetCRMStoreToClean = () => {
   if (typeof window === "undefined") return cleanBaselineStore;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanBaselineStore));
-  window.dispatchEvent(new Event("wcrm_store_updated"));
-  if (typeof BroadcastChannel !== "undefined") {
-    try {
-      const bc = new BroadcastChannel("wcrm_sync_channel");
-      bc.postMessage({ type: "SYNC", timestamp: Date.now() });
-      bc.close();
-    } catch (e) {}
-  }
+  saveCRMStore(cleanBaselineStore);
   return cleanBaselineStore;
 };
 
-// Cross-tab / Cross-window Reactive Store Subscription Listener
+// Cross-tab & Cross-Device Reactive Store Subscription Listener
 export const subscribeToCRMStore = (callback: () => void): (() => void) => {
   if (typeof window === "undefined") return () => {};
+
+  // Initialize cloud background synchronization
+  initCloudSync();
 
   const handleCustom = () => {
     callback();
@@ -589,8 +387,7 @@ export const subscribeToCRMStore = (callback: () => void): (() => void) => {
   };
 };
 
-// ACTIONS
-
+// ADVANCE ACTIONS
 export const disburseAdvanceInStore = (advanceId: string): { success: boolean; message: string } => {
   const store = getCRMStore();
   const advance = store.advances.find((a) => a.id === advanceId);
@@ -651,25 +448,80 @@ export const updateCorrectionStatusInStore = (
   return false;
 };
 
-export const applyAdvanceInStore = (req: {
+export const updateLeaveStatusInStore = (
+  leaveId: string,
+  newStatus: "APPROVED" | "REJECTED"
+) => {
+  const store = getCRMStore();
+  const leave = store.leaves.find((l) => l.id === leaveId);
+  if (leave) {
+    leave.status = newStatus;
+    if (newStatus === "APPROVED") {
+      leave.balanceRemaining = Math.max(0, leave.balanceRemaining - leave.days);
+    }
+    saveCRMStore(store);
+    return true;
+  }
+  return false;
+};
+
+export const applyLeaveInStore = (data: {
+  employeeName: string;
+  employeeCode: string;
+  department: string;
+  leaveType: LeaveRequest["leaveType"];
+  startDate: string;
+  endDate: string;
+  period: LeaveRequest["period"];
+  days: number;
+  reason: string;
+}) => {
+  const store = getCRMStore();
+  const emp = store.employees.find((e) => e.code === data.employeeCode);
+  const total = emp ? emp.casualLeaves + emp.sickLeaves : 12;
+
+  const newLeave: LeaveRequest = {
+    id: `lv-${Date.now()}`,
+    employeeName: data.employeeName,
+    employeeCode: data.employeeCode,
+    department: data.department,
+    leaveType: data.leaveType,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    period: data.period,
+    days: data.days,
+    reason: data.reason,
+    status: "PENDING",
+    appliedAt: "Just now",
+    balanceRemaining: Math.max(0, total - data.days),
+    totalEntitlement: total,
+  };
+
+  store.leaves = [newLeave, ...store.leaves];
+  saveCRMStore(store);
+  return newLeave;
+};
+
+export const createAdvanceRequestInStore = (data: {
+  employeeId: string;
   employee: string;
   code: string;
   department: string;
   amount: number;
   reason: string;
-  mode: "SALARY_DEDUCTION" | "INSTALLMENTS" | "CASH";
+  mode: AdvanceRequest["mode"];
 }) => {
   const store = getCRMStore();
   const newAdv: AdvanceRequest = {
     id: `adv-${Date.now()}`,
-    employeeId: String(Date.now()),
-    employee: req.employee,
-    code: req.code,
-    department: req.department,
-    amount: req.amount,
-    outstanding: req.amount,
-    reason: req.reason,
-    mode: req.mode,
+    employeeId: data.employeeId,
+    employee: data.employee,
+    code: data.code,
+    department: data.department,
+    amount: data.amount,
+    outstanding: data.amount,
+    reason: data.reason,
+    mode: data.mode,
     status: "Pending Approval",
     requestedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
   };
@@ -679,52 +531,7 @@ export const applyAdvanceInStore = (req: {
   return newAdv;
 };
 
-export const updateLeaveStatusInStore = (
-  leaveId: string,
-  newStatus: "APPROVED" | "REJECTED"
-) => {
-  const store = getCRMStore();
-  const target = store.leaves.find((l) => l.id === leaveId);
-  if (target) {
-    target.status = newStatus;
-    saveCRMStore(store);
-    return true;
-  }
-  return false;
-};
-
-export const addComplaintCommentInStore = (
-  complaintId: string,
-  author: string,
-  role: "ADMIN" | "EMPLOYEE",
-  text: string,
-  newStatus?: ComplaintItem["status"]
-) => {
-  const store = getCRMStore();
-  const comp = store.complaints.find((c) => c.id === complaintId);
-  if (comp) {
-    comp.comments.push({
-      author,
-      role,
-      text,
-      time: new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    });
-    if (newStatus) {
-      comp.status = newStatus;
-    }
-    saveCRMStore(store);
-    return true;
-  }
-  return false;
-};
-
-export const createComplaintInStore = (data: {
+export const addComplaintInStore = (data: {
   category: ComplaintItem["category"];
   subject: string;
   description: string;
@@ -772,6 +579,64 @@ export const createComplaintInStore = (data: {
   store.complaints = [newComp, ...store.complaints];
   saveCRMStore(store);
   return newComp;
+};
+
+export const createComplaintInStore = addComplaintInStore;
+
+export const addComplaintCommentInStore = (
+  complaintId: string,
+  authorOrComment: string | { author: string; role: "ADMIN" | "EMPLOYEE"; text: string; time: string },
+  role?: "ADMIN" | "EMPLOYEE",
+  text?: string,
+  newStatus?: ComplaintItem["status"]
+) => {
+  const store = getCRMStore();
+  const complaint = store.complaints.find((c) => c.id === complaintId);
+  if (complaint) {
+    if (!complaint.comments) complaint.comments = [];
+    if (typeof authorOrComment === "object") {
+      complaint.comments.push(authorOrComment);
+    } else {
+      complaint.comments.push({
+        author: authorOrComment,
+        role: role || "ADMIN",
+        text: text || "",
+        time: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
+      if (newStatus) complaint.status = newStatus;
+    }
+    saveCRMStore(store);
+    return true;
+  }
+  return false;
+};
+
+export const applyAdvanceInStore = (data: {
+  employee?: string;
+  employeeCode?: string;
+  code?: string;
+  department?: string;
+  amount: number;
+  reason: string;
+  mode?: AdvanceRequest["mode"];
+  repaymentTerm?: AdvanceRequest["mode"];
+  repaymentMonths?: number;
+}) => {
+  return createAdvanceRequestInStore({
+    employeeId: "2",
+    employee: data.employee || "Bharat vyas",
+    code: data.code || data.employeeCode || "E001",
+    department: data.department || "Operations",
+    amount: data.amount,
+    reason: data.reason,
+    mode: data.mode || data.repaymentTerm || "SALARY_DEDUCTION",
+  });
 };
 
 export const updateShopSettingsInStore = (settings: Partial<ShopSettings>) => {
@@ -875,7 +740,7 @@ export const deleteOrderInStore = (orderId: string) => {
 export const createTaskInStore = (data: {
   title: string;
   description?: string;
-  priority: "Normal" | "High" | "Urgent";
+  priority?: "Normal" | "High" | "Urgent";
   due: string;
   assignee: string;
   assigneeCode?: string;
@@ -885,9 +750,9 @@ export const createTaskInStore = (data: {
     id: `tsk-${Date.now()}`,
     title: data.title,
     description: data.description,
-    priority: data.priority,
-    status: "Assigned",
-    due: data.due || "-",
+    priority: data.priority || "Normal",
+    status: "In Progress",
+    due: data.due,
     assignee: data.assignee,
     assigneeCode: data.assigneeCode || "E001",
     created: new Date().toLocaleDateString("en-US", {
@@ -914,21 +779,28 @@ export const submitTaskEvidenceInStore = (
   if (task) {
     task.status = "Submitted";
     task.evidenceNote = evidenceNote;
-    if (evidenceFile) task.evidenceFile = evidenceFile;
+    task.evidenceFile = evidenceFile;
     saveCRMStore(store);
     return true;
   }
   return false;
 };
 
-export const reviewTaskInStore = (taskId: string, action: "Approved" | "Rejected") => {
+export const reviewTaskInStore = (
+  taskId: string,
+  action: "APPROVE" | "REJECT" | "Approved" | "Rejected",
+  rejectReason?: string
+) => {
   const store = getCRMStore();
   const task = store.tasks.find((t) => t.id === taskId);
   if (task) {
-    if (action === "Approved") {
+    if (action === "APPROVE" || action === "Approved") {
       task.status = "Completed";
     } else {
       task.status = "In Progress";
+      if (rejectReason) {
+        task.evidenceNote = `[REJECTED: ${rejectReason}] Previous note: ${task.evidenceNote || ""}`;
+      }
     }
     saveCRMStore(store);
     return true;
@@ -954,7 +826,7 @@ export const deleteTaskInStore = (taskId: string) => {
   return true;
 };
 
-// SHIFT & ATTENDANCE ACTIONS
+// SHIFT / ATTENDANCE ACTIONS
 export const checkInEmployeeInStore = (data: {
   employeeCode: string;
   employeeName: string;
@@ -962,8 +834,9 @@ export const checkInEmployeeInStore = (data: {
   distanceM?: number;
 }) => {
   const store = getCRMStore();
-  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-  const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const today = now.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const nowTime = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const activeShift: ActiveShiftState = {
     employeeCode: data.employeeCode,
@@ -1107,5 +980,3 @@ export const updateAttendanceRecordInStore = (record: AttendanceRecord) => {
   saveCRMStore(store);
   return true;
 };
-
-
