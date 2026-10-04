@@ -168,6 +168,21 @@ export interface TaskItem {
   evidenceFile?: string;
 }
 
+export interface ActiveShiftState {
+  employeeCode: string;
+  employeeName: string;
+  department: string;
+  shiftState: "NOT_STARTED" | "ACTIVE" | "ON_BREAK" | "COMPLETED";
+  checkInTime: string;
+  checkInTimestamp: number;
+  checkOutTime?: string;
+  checkOutTimestamp?: number;
+  breakStartedAt?: number;
+  totalBreakSeconds: number;
+  date: string;
+  distanceM: number;
+}
+
 export interface CRMStoreData {
   settings: ShopSettings;
   employees: EmployeeItem[];
@@ -176,6 +191,7 @@ export interface CRMStoreData {
   orders: OrderItem[];
   tasks: TaskItem[];
   attendance: AttendanceRecord[];
+  activeShifts: Record<string, ActiveShiftState>;
   corrections: CorrectionItem[];
   leaves: LeaveRequest[];
   complaints: ComplaintItem[];
@@ -199,6 +215,7 @@ const cleanBaselineStore: CRMStoreData = {
     qrRotationSeconds: 45,
     lastUpdated: "Today",
   },
+  activeShifts: {},
   employees: [
     {
       id: "1",
@@ -486,8 +503,10 @@ export const getCRMStore = (): CRMStoreData => {
     return {
       ...cleanBaselineStore,
       ...parsed,
+      activeShifts: parsed.activeShifts || cleanBaselineStore.activeShifts || {},
       orders: parsed.orders || cleanBaselineStore.orders,
       tasks: parsed.tasks || cleanBaselineStore.tasks,
+      attendance: parsed.attendance || cleanBaselineStore.attendance,
       corrections: parsed.corrections || cleanBaselineStore.corrections,
       complaints: parsed.complaints || cleanBaselineStore.complaints,
     };
@@ -934,4 +953,159 @@ export const deleteTaskInStore = (taskId: string) => {
   saveCRMStore(store);
   return true;
 };
+
+// SHIFT & ATTENDANCE ACTIONS
+export const checkInEmployeeInStore = (data: {
+  employeeCode: string;
+  employeeName: string;
+  department?: string;
+  distanceM?: number;
+}) => {
+  const store = getCRMStore();
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const activeShift: ActiveShiftState = {
+    employeeCode: data.employeeCode,
+    employeeName: data.employeeName,
+    department: data.department || "Operations",
+    shiftState: "ACTIVE",
+    checkInTime: nowTime,
+    checkInTimestamp: Date.now(),
+    totalBreakSeconds: 0,
+    date: today,
+    distanceM: data.distanceM ?? 20,
+  };
+
+  if (!store.activeShifts) store.activeShifts = {};
+  store.activeShifts[data.employeeCode] = activeShift;
+
+  // Sync to attendance record
+  const existingIndex = store.attendance.findIndex(
+    (a) => a.employeeCode === data.employeeCode && a.date === today
+  );
+
+  const attRecord: AttendanceRecord = {
+    id: `att-${Date.now()}`,
+    employeeName: data.employeeName,
+    employeeCode: data.employeeCode,
+    department: data.department || "Operations",
+    date: today,
+    checkIn: nowTime,
+    checkOut: "—",
+    workedHours: 0.1,
+    overtimeHours: 0,
+    classification: "PARTIAL_DAY",
+    status: "Present",
+    distanceM: data.distanceM ?? 20,
+  };
+
+  if (existingIndex >= 0) {
+    store.attendance[existingIndex] = {
+      ...store.attendance[existingIndex],
+      status: "Present",
+      checkIn: nowTime,
+      distanceM: data.distanceM ?? 20,
+    };
+  } else {
+    store.attendance = [attRecord, ...store.attendance];
+  }
+
+  saveCRMStore(store);
+  return activeShift;
+};
+
+export const startBreakInStore = (employeeCode: string) => {
+  const store = getCRMStore();
+  if (!store.activeShifts) store.activeShifts = {};
+  if (store.activeShifts[employeeCode]) {
+    store.activeShifts[employeeCode].shiftState = "ON_BREAK";
+    store.activeShifts[employeeCode].breakStartedAt = Date.now();
+    saveCRMStore(store);
+    return true;
+  }
+  return false;
+};
+
+export const endBreakInStore = (employeeCode: string) => {
+  const store = getCRMStore();
+  if (!store.activeShifts) store.activeShifts = {};
+  if (store.activeShifts[employeeCode]) {
+    const shift = store.activeShifts[employeeCode];
+    if (shift.breakStartedAt) {
+      shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
+      shift.breakStartedAt = undefined;
+    }
+    shift.shiftState = "ACTIVE";
+    saveCRMStore(store);
+    return true;
+  }
+  return false;
+};
+
+export const checkOutEmployeeInStore = (employeeCode: string) => {
+  const store = getCRMStore();
+  if (!store.activeShifts) store.activeShifts = {};
+  if (store.activeShifts[employeeCode]) {
+    const shift = store.activeShifts[employeeCode];
+    const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    shift.shiftState = "COMPLETED";
+    shift.checkOutTime = nowTime;
+    shift.checkOutTimestamp = Date.now();
+
+    if (shift.breakStartedAt) {
+      shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
+      shift.breakStartedAt = undefined;
+    }
+
+    const totalSeconds = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0));
+    const totalHours = Number((totalSeconds / 3600).toFixed(1));
+    const overtimeHours = totalHours > 10 ? Number((totalHours - 10).toFixed(1)) : 0;
+    const classification: AttendanceRecord["classification"] = totalHours >= 8 ? "FULL_DAY" : totalHours >= 4 ? "HALF_DAY" : "PARTIAL_DAY";
+
+    // Update in store.attendance
+    const today = shift.date;
+    const existingIndex = store.attendance.findIndex(
+      (a) => a.employeeCode === employeeCode && a.date === today
+    );
+    if (existingIndex >= 0) {
+      store.attendance[existingIndex] = {
+        ...store.attendance[existingIndex],
+        checkOut: nowTime,
+        workedHours: totalHours,
+        overtimeHours,
+        classification,
+        status: "Present",
+      };
+    }
+
+    saveCRMStore(store);
+    return shift;
+  }
+  return null;
+};
+
+export const getActiveShift = (employeeCode: string): ActiveShiftState | null => {
+  const store = getCRMStore();
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const shift = store.activeShifts?.[employeeCode];
+  if (!shift) return null;
+  if (shift.date !== today && shift.shiftState === "ACTIVE") {
+    shift.shiftState = "COMPLETED";
+  }
+  return shift;
+};
+
+export const updateAttendanceRecordInStore = (record: AttendanceRecord) => {
+  const store = getCRMStore();
+  const index = store.attendance.findIndex((a) => a.id === record.id);
+  if (index >= 0) {
+    store.attendance[index] = record;
+  } else {
+    store.attendance = [record, ...store.attendance];
+  }
+  saveCRMStore(store);
+  return true;
+};
+
 

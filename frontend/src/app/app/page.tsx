@@ -28,16 +28,29 @@ import {
   Mail,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { getCRMStore, applyAdvanceInStore, subscribeToCRMStore } from "@/lib/store";
+import {
+  getCRMStore,
+  applyAdvanceInStore,
+  subscribeToCRMStore,
+  checkInEmployeeInStore,
+  startBreakInStore,
+  endBreakInStore,
+  checkOutEmployeeInStore,
+  getActiveShift,
+} from "@/lib/store";
 
 export default function EmployeeHomePage() {
   const { user, logout } = useAuth();
+
+  const employeeName = user?.full_name || "Bharat vyas";
+  const employeeCode = user?.employee_id ? `EMP${user.employee_id.substring(0, 5).toUpperCase()}` : "E001";
+  const firstName = employeeName.split(" ")[0];
 
   // Shift States: NOT_STARTED | ACTIVE | ON_BREAK | COMPLETED
   const [shiftState, setShiftState] = useState<"NOT_STARTED" | "ACTIVE" | "ON_BREAK" | "COMPLETED">("NOT_STARTED");
   const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [breakSeconds, setBreakSeconds] = useState(0);
-  const [checkInTime, setCheckInTime] = useState<string>("09:00 AM");
+  const [checkInTime, setCheckInTime] = useState<string>("—");
   const [checkOutTime, setCheckOutTime] = useState<string>("—");
 
   // Modals
@@ -48,7 +61,7 @@ export default function EmployeeHomePage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [qrInput, setQrInput] = useState("");
-  const [distanceMeters, setDistanceMeters] = useState<number>(25);
+  const [distanceMeters, setDistanceMeters] = useState<number>(20);
 
   // Correction Form
   const [correctionForm, setCorrectionForm] = useState({
@@ -72,8 +85,8 @@ export default function EmployeeHomePage() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Dynamic counts from store
-  const [openTasksCount, setOpenTasksCount] = useState(1);
-  const [availableOrdersCount, setAvailableOrdersCount] = useState(1);
+  const [openTasksCount, setOpenTasksCount] = useState(0);
+  const [availableOrdersCount, setAvailableOrdersCount] = useState(0);
 
   const loadStoreData = () => {
     const store = getCRMStore();
@@ -81,33 +94,69 @@ export default function EmployeeHomePage() {
     setAvailableOrdersCount(broadcastedOrders);
     const assignedTasks = (store.tasks || []).filter((t) => t.status !== "Completed").length;
     setOpenTasksCount(assignedTasks);
+
+    // Sync persistent shift state
+    const shift = getActiveShift(employeeCode);
+    if (shift) {
+      setShiftState(shift.shiftState);
+      setCheckInTime(shift.checkInTime || "—");
+      if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);
+
+      if (shift.shiftState === "ACTIVE") {
+        const elapsed = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0));
+        setSecondsElapsed(elapsed);
+      } else if (shift.shiftState === "ON_BREAK") {
+        const ongoingBreak = shift.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
+        const totalBreak = (shift.totalBreakSeconds || 0) + ongoingBreak;
+        setBreakSeconds(totalBreak);
+        const elapsed = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - totalBreak);
+        setSecondsElapsed(elapsed);
+      } else if (shift.shiftState === "COMPLETED") {
+        const totalWorked = Math.max(0, Math.floor(((shift.checkOutTimestamp || Date.now()) - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0));
+        setSecondsElapsed(totalWorked);
+      }
+    } else {
+      setShiftState("NOT_STARTED");
+      setCheckInTime("—");
+      setCheckOutTime("—");
+      setSecondsElapsed(0);
+      setBreakSeconds(0);
+    }
   };
 
   useEffect(() => {
     loadStoreData();
     const unsubscribe = subscribeToCRMStore(loadStoreData);
     return () => unsubscribe();
-  }, []);
+  }, [employeeCode]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Ticking shift timer
+  // Real-world timestamp ticking timer (resilient to app close, lockscreen, background tab)
   useEffect(() => {
     let interval: any = null;
-    if (shiftState === "ACTIVE") {
+    if (shiftState === "ACTIVE" || shiftState === "ON_BREAK") {
       interval = setInterval(() => {
-        setSecondsElapsed((prev) => prev + 1);
-      }, 1000);
-    } else if (shiftState === "ON_BREAK") {
-      interval = setInterval(() => {
-        setBreakSeconds((prev) => prev + 1);
+        const shift = getActiveShift(employeeCode);
+        if (shift) {
+          if (shift.shiftState === "ACTIVE") {
+            const elapsed = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0));
+            setSecondsElapsed(elapsed);
+          } else if (shift.shiftState === "ON_BREAK") {
+            const ongoingBreak = shift.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
+            const totalBreak = (shift.totalBreakSeconds || 0) + ongoingBreak;
+            setBreakSeconds(totalBreak);
+            const elapsed = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - totalBreak);
+            setSecondsElapsed(elapsed);
+          }
+        }
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [shiftState]);
+  }, [shiftState, employeeCode]);
 
   const formatHoursMinutes = (secs: number) => {
     if (secs === 0) return "worked 0s";
@@ -133,29 +182,38 @@ export default function EmployeeHomePage() {
   };
 
   const handleConfirmCheckIn = () => {
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setCheckInTime(now);
+    const shift = checkInEmployeeInStore({
+      employeeCode,
+      employeeName,
+      department: "Operations",
+      distanceM: distanceMeters,
+    });
     setShiftState("ACTIVE");
-    setSecondsElapsed(180);
+    setCheckInTime(shift.checkInTime);
+    setSecondsElapsed(1);
     setShowCheckInModal(false);
-    showToast(`✓ Check-In confirmed at ${now} via GPS Geofence!`);
+    showToast(`✓ Check-In confirmed at ${shift.checkInTime} via GPS Geofence! (Persisted)`);
   };
 
   const handleStartBreak = () => {
+    startBreakInStore(employeeCode);
     setShiftState("ON_BREAK");
     showToast("Break started. Break timer ticking.");
   };
 
   const handleEndBreak = () => {
+    endBreakInStore(employeeCode);
     setShiftState("ACTIVE");
-    showToast("Break ended. Resuming work hours.");
+    showToast("Break ended. Resuming active work shift.");
   };
 
   const handleCheckOut = () => {
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setCheckOutTime(now);
-    setShiftState("COMPLETED");
-    showToast(`✓ Checked out at ${now}. Day attendance recorded!`);
+    const shift = checkOutEmployeeInStore(employeeCode);
+    if (shift) {
+      setShiftState("COMPLETED");
+      if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);
+      showToast(`✓ Checked out at ${shift.checkOutTime}. Full day attendance recorded!`);
+    }
   };
 
   const handleCorrectionSubmit = (e: React.FormEvent) => {
@@ -205,10 +263,6 @@ export default function EmployeeHomePage() {
     setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
     showToast("✓ Password updated successfully! Use your new password on next login.");
   };
-
-  const employeeName = user?.full_name || "Bharat vyas";
-  const employeeCode = user?.employee_id ? `EMP${user.employee_id.substring(0, 5).toUpperCase()}` : "E001";
-  const firstName = employeeName.split(" ")[0];
 
   return (
     <div className="space-y-6 font-sans pb-12">
