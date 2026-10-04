@@ -30,6 +30,7 @@ import {
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import {
   getCRMStore,
   applyAdvanceInStore,
@@ -234,8 +235,8 @@ export default function EmployeeHomePage() {
     }
 
     applyAdvanceInStore({
-      employee: user?.full_name || "Bharat vyas",
-      code: user?.employee_id ? `EMP${user.employee_id.substring(0, 4).toUpperCase()}` : "E001",
+      employee: employeeName,
+      code: employeeCode,
       department: "Operations",
       amount: Number(advanceForm.amount),
       reason: advanceForm.reason.trim() || "Emergency expense",
@@ -295,6 +296,7 @@ export default function EmployeeHomePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationCenter isEmployee={true} />
           <LanguageSwitcher />
           <button
             onClick={() => setShowProfileModal(true)}
@@ -305,6 +307,55 @@ export default function EmployeeHomePage() {
           </button>
         </div>
       </div>
+
+      {/* Live Reminder Banners */}
+      {availableOrdersCount > 0 && (
+        <Link
+          href="/app/orders"
+          className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-xs text-red-700 flex items-center justify-between gap-2 shadow-2xs hover:bg-red-500/15 transition-all group"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shrink-0"></span>
+            <div>
+              <span className="font-bold">
+                {lang === "hi"
+                  ? `🚨 ${availableOrdersCount} नए ऑर्डर पूल में क्लेम हेतु उपलब्ध हैं!`
+                  : `🚨 ${availableOrdersCount} unclaimed order(s) waiting in pool!`}
+              </span>
+              <p className="text-[11px] text-red-600/80">
+                {lang === "hi" ? "डिस्पैच शुरू करने के लिए ऑर्डर क्लेम करें।" : "Tap to open available orders pool and claim."}
+              </p>
+            </div>
+          </div>
+          <span className="font-bold text-red-700 group-hover:translate-x-0.5 transition-transform">
+            {lang === "hi" ? "क्लेम करें →" : "Claim →"}
+          </span>
+        </Link>
+      )}
+
+      {openTasksCount > 0 && (
+        <Link
+          href="/app/tasks"
+          className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-900 flex items-center justify-between gap-2 shadow-2xs hover:bg-amber-500/15 transition-all group"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-600 animate-pulse shrink-0"></span>
+            <div>
+              <span className="font-bold">
+                {lang === "hi"
+                  ? `⏰ ${openTasksCount} कार्य आपके पूरा करने हेतु लंबित हैं!`
+                  : `⏰ ${openTasksCount} pending task(s) awaiting completion!`}
+              </span>
+              <p className="text-[11px] text-amber-700/80">
+                {lang === "hi" ? "सबूत जमा करने के लिए टास्क सूची खोलें।" : "Tap to review assigned tasks and upload proof."}
+              </p>
+            </div>
+          </div>
+          <span className="font-bold text-amber-800 group-hover:translate-x-0.5 transition-transform">
+            {lang === "hi" ? "देखें →" : "View →"}
+          </span>
+        </Link>
+      )}
 
       {/* Hero Greeting */}
       <div className="space-y-0.5">

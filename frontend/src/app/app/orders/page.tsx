@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import {
   getCRMStore,
   claimOrderInStore,
@@ -121,6 +122,7 @@ export default function EmployeeOrdersPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationCenter isEmployee={true} />
             <LanguageSwitcher />
             <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold text-[11px] rounded-full border border-emerald-200 shrink-0">
               {lang === "hi" ? "लाइव सिंक" : "Live Synced"}
@@ -325,6 +327,18 @@ export default function EmployeeOrdersPage() {
                   )}
                 </div>
 
+                {/* Slip Viewer Button in My Orders */}
+                {order.receiptPhoto && (
+                  <button
+                    type="button"
+                    onClick={() => setViewingParchi(order)}
+                    className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <FileText size={13} />
+                    <span>{lang === "hi" ? "दुकान पर्ची / फोटो देखें" : "View Parchi / Photo Slip"}</span>
+                  </button>
+                )}
+
                 {/* Status Stepper Tracker */}
                 <div className="grid grid-cols-4 gap-1 pt-2 border-t border-slate-100 text-[10px] text-center font-bold">
                   <span
@@ -397,27 +411,51 @@ export default function EmployeeOrdersPage() {
 
       {/* Parchi Preview Modal */}
       {viewingParchi && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-4 space-y-3">
-            <div className="flex items-center justify-between border-b pb-2">
-              <h3 className="font-bold text-sm text-slate-900">
-                {lang === "hi" ? "ऑर्डर पर्ची / स्लिप" : "Order Slip / Parchi"}
-              </h3>
-              <button onClick={() => setViewingParchi(null)} className="p-1 text-slate-400 hover:text-slate-700">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded">
+                  {viewingParchi.orderCode}
+                </span>
+                <h3 className="font-bold text-sm text-slate-900">
+                  {lang === "hi" ? "ऑर्डर पर्ची / फोटो" : "Order Slip / Parchi"}
+                </h3>
+              </div>
+              <button onClick={() => setViewingParchi(null)} className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer">
                 <X size={18} />
               </button>
             </div>
-            <div className="bg-slate-50 border rounded-xl p-6 text-center text-xs text-slate-600 space-y-2">
-              <FileText size={36} className="mx-auto text-blue-500" />
-              <p className="font-bold text-slate-800">{viewingParchi.orderCode} - Counter Slip</p>
-              <p className="text-slate-500">{viewingParchi.itemsDescription}</p>
-              <p className="text-[10px] text-slate-400">File: {viewingParchi.receiptPhoto}</p>
-            </div>
+
+            {/* If uploaded real image */}
+            {viewingParchi.receiptPhoto && viewingParchi.receiptPhoto.startsWith("data:image") ? (
+              <div className="space-y-2">
+                <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center">
+                  <img
+                    src={viewingParchi.receiptPhoto}
+                    alt={`Parchi ${viewingParchi.orderCode}`}
+                    className="max-h-[60vh] w-full object-contain rounded-xl"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-600 font-mono">
+                  <span>{viewingParchi.customerName}</span>
+                  <span>{viewingParchi.itemsCount} {lang === "hi" ? "सामान" : "Items"}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 text-center text-xs text-amber-950 font-mono space-y-2 shadow-inner">
+                <FileText size={36} className="mx-auto text-amber-600" />
+                <p className="font-bold text-sm text-slate-900">{viewingParchi.orderCode} - Counter Slip</p>
+                <p className="text-slate-700">{viewingParchi.itemsDescription || `${viewingParchi.itemsCount} items`}</p>
+                <p className="text-[10px] text-amber-700">Customer: {viewingParchi.customerName} • {viewingParchi.phone}</p>
+              </div>
+            )}
+
             <button
               onClick={() => setViewingParchi(null)}
-              className="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
-              {lang === "hi" ? "बंद करें" : "Close"}
+              {lang === "hi" ? "बंद करें" : "Close Slip"}
             </button>
           </div>
         </div>

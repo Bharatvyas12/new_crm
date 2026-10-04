@@ -16,8 +16,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import {
   getCRMStore,
   submitTaskEvidenceInStore,
@@ -27,7 +29,11 @@ import {
 } from "@/lib/store";
 
 export default function EmployeeTasksPage() {
+  const { user } = useAuth();
   const { t, lang } = useLanguage();
+  const empCode = (user?.employee_id || "E001").trim().toUpperCase();
+  const empName = (user?.full_name || user?.name || "Bharat vyas").trim().toLowerCase();
+
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [evidenceNote, setEvidenceNote] = useState("");
@@ -37,12 +43,25 @@ export default function EmployeeTasksPage() {
   useEffect(() => {
     const loadTasks = () => {
       const store = getCRMStore();
-      setTasks(store.tasks || []);
+      const allTasks = store.tasks || [];
+      const myFilteredTasks = allTasks.filter((task) => {
+        const taskCode = (task.assigneeCode || "").trim().toUpperCase();
+        const taskName = (task.assignee || "").trim().toLowerCase();
+        return (
+          taskCode === empCode ||
+          taskName === empName ||
+          taskName.includes(empName) ||
+          empName.includes(taskName) ||
+          taskName === "all" ||
+          taskName === "all employees"
+        );
+      });
+      setTasks(myFilteredTasks);
     };
     loadTasks();
     const unsubscribe = subscribeToCRMStore(loadTasks);
     return () => unsubscribe();
-  }, []);
+  }, [empCode, empName]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -51,7 +70,7 @@ export default function EmployeeTasksPage() {
 
   const handleStartTask = (taskId: string) => {
     updateTaskStatusInStore(taskId, "In Progress");
-    showToast("Task marked as In Progress");
+    showToast(lang === "hi" ? "कार्य प्रगति में मार्क किया गया" : "Task marked as In Progress");
   };
 
   const handleSubmitEvidence = (taskId: string) => {
@@ -66,7 +85,11 @@ export default function EmployeeTasksPage() {
       evidenceFileName ? evidenceFileName : "site_photo_verification.jpg"
     );
 
-    showToast("✓ Task evidence submitted! Sent to Admin Review Queue.");
+    showToast(
+      lang === "hi"
+        ? "✓ कार्य सबूत जमा हो गया! एडमिन समीक्षा कतार में भेजा गया।"
+        : "✓ Task evidence submitted! Sent to Admin Review Queue."
+    );
     setSelectedTask(null);
     setEvidenceNote("");
     setEvidenceFileName("");
@@ -93,10 +116,13 @@ export default function EmployeeTasksPage() {
               {lang === "hi" ? "कार्य और कार्यप्रणाली (Tasks)" : "Work Tasks & SOPs"}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              {lang === "hi" ? "आपको सौंपे गए कार्य और सबूत सत्यापन" : "Tasks assigned to you with evidence verification"}
+              {lang === "hi"
+                ? `विशेष रूप से ${user?.full_name || "आपको"} सौंपे गए कार्य`
+                : `Tasks assigned specifically to you (${user?.full_name || "Employee"})`}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationCenter isEmployee={true} />
             <LanguageSwitcher />
             <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[11px] rounded-full border border-blue-200 shrink-0">
               {tasks.length} {lang === "hi" ? "कार्य" : "Assigned"}

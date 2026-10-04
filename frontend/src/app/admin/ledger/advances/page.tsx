@@ -14,7 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 import Link from "next/link";
-import { getCRMStore, saveCRMStore, disburseAdvanceInStore, AdvanceRequest } from "@/lib/store";
+import { getCRMStore, saveCRMStore, disburseAdvanceInStore, subscribeToCRMStore, AdvanceRequest } from "@/lib/store";
 
 export default function AdvancesPage() {
   const [advances, setAdvances] = useState<AdvanceRequest[]>([]);
@@ -27,8 +27,8 @@ export default function AdvancesPage() {
 
   useEffect(() => {
     loadData();
-    window.addEventListener("wcrm_store_updated", loadData);
-    return () => window.removeEventListener("wcrm_store_updated", loadData);
+    const unsubscribe = subscribeToCRMStore(loadData);
+    return () => unsubscribe();
   }, []);
 
   const showToast = (msg: string) => {

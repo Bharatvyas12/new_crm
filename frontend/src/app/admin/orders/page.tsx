@@ -68,6 +68,7 @@ export default function OrdersPage() {
     priority: "Normal" as "Normal" | "High" | "Urgent",
     notes: "",
     fileName: "",
+    fileDataUrl: "",
   });
 
   const showToast = (msg: string) => {
@@ -95,7 +96,7 @@ export default function OrdersPage() {
       itemsCount: Number(newOrder.itemCount) || 1,
       itemsDescription: newOrder.itemsDescription.trim() || `${newOrder.itemCount || 1} items parcel`,
       priority: newOrder.priority,
-      receiptPhoto: newOrder.fileName ? "uploaded_parchi.jpg" : undefined,
+      receiptPhoto: newOrder.fileDataUrl || (newOrder.fileName ? "uploaded_parchi.jpg" : undefined),
       status: "Broadcasted",
       notes: newOrder.notes.trim() || undefined,
     });
@@ -112,6 +113,7 @@ export default function OrdersPage() {
       priority: "Normal",
       notes: "",
       fileName: "",
+      fileDataUrl: "",
     });
   };
 
@@ -547,15 +549,24 @@ export default function OrdersPage() {
                     type="file"
                     accept="image/*"
                     onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        setNewOrder({ ...newOrder, fileName: e.target.files[0].name });
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          setNewOrder((prev) => ({
+                            ...prev,
+                            fileName: file.name,
+                            fileDataUrl: (event.target?.result as string) || "",
+                          }));
+                        };
+                        reader.readAsDataURL(file);
                       }
                     }}
                     className="text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
                   />
                   {newOrder.fileName && (
                     <span className="text-xs font-mono font-bold text-emerald-700 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> {newOrder.fileName}
+                      <Check className="w-3.5 h-3.5" /> {newOrder.fileName} (Ready)
                     </span>
                   )}
                 </div>
@@ -583,14 +594,14 @@ export default function OrdersPage() {
 
       {/* PARCHI SLIP VIEWER MODAL */}
       {viewingParchiOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
                   {viewingParchiOrder.orderCode}
                 </span>
-                <h3 className="text-sm font-bold text-slate-900">Parchi Receipt Slip</h3>
+                <h3 className="text-sm font-bold text-slate-900">Parchi Receipt Slip Photo</h3>
               </div>
               <button
                 onClick={() => setViewingParchiOrder(null)}
@@ -600,35 +611,52 @@ export default function OrdersPage() {
               </button>
             </div>
 
-            {/* Simulated Parchi Graphic */}
-            <div className="mt-4 p-5 bg-amber-50/70 border border-amber-200 rounded-2xl font-mono text-xs text-amber-950 space-y-3 shadow-inner">
-              <div className="text-center border-b border-amber-200/80 pb-2">
-                <div className="font-bold text-sm tracking-wider uppercase">Order Parchi Slip</div>
-                <div className="text-[11px] text-amber-800">{viewingParchiOrder.customerName}</div>
-                <div className="text-[10px] text-amber-700">{viewingParchiOrder.phone}</div>
-              </div>
-
-              <div className="space-y-1 text-[11px]">
-                <div className="flex justify-between font-bold border-b border-amber-200 pb-1">
-                  <span>Item Summary</span>
-                  <span>Qty: {viewingParchiOrder.itemsCount}</span>
+            {/* If uploaded image exists */}
+            {viewingParchiOrder.receiptPhoto && viewingParchiOrder.receiptPhoto.startsWith("data:image") ? (
+              <div className="space-y-2">
+                <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center">
+                  <img
+                    src={viewingParchiOrder.receiptPhoto}
+                    alt={`Parchi ${viewingParchiOrder.orderCode}`}
+                    className="max-h-[60vh] w-full object-contain rounded-xl"
+                  />
                 </div>
-                <p className="text-amber-900 italic py-1">
-                  {viewingParchiOrder.itemsDescription || `${viewingParchiOrder.itemsCount} items requested`}
-                </p>
-                {viewingParchiOrder.address && (
-                  <div className="pt-2 text-[10px] text-amber-800 border-t border-amber-200">
-                    <span className="font-bold">Destination:</span> {viewingParchiOrder.address}
+                <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
+                  <span>Customer: {viewingParchiOrder.customerName}</span>
+                  <span>{viewingParchiOrder.phone}</span>
+                </div>
+              </div>
+            ) : (
+              /* Paper Slip Graphic fallback */
+              <div className="p-5 bg-amber-50/70 border border-amber-200 rounded-2xl font-mono text-xs text-amber-950 space-y-3 shadow-inner">
+                <div className="text-center border-b border-amber-200/80 pb-2">
+                  <div className="font-bold text-sm tracking-wider uppercase">Order Parchi Slip</div>
+                  <div className="text-[11px] text-amber-800">{viewingParchiOrder.customerName}</div>
+                  <div className="text-[10px] text-amber-700">{viewingParchiOrder.phone}</div>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between font-bold border-b border-amber-200 pb-1">
+                    <span>Item Summary</span>
+                    <span>Qty: {viewingParchiOrder.itemsCount}</span>
                   </div>
-                )}
-              </div>
+                  <p className="text-amber-900 italic py-1">
+                    {viewingParchiOrder.itemsDescription || `${viewingParchiOrder.itemsCount} items requested`}
+                  </p>
+                  {viewingParchiOrder.address && (
+                    <div className="pt-2 text-[10px] text-amber-800 border-t border-amber-200">
+                      <span className="font-bold">Destination:</span> {viewingParchiOrder.address}
+                    </div>
+                  )}
+                </div>
 
-              <div className="text-center pt-2 text-[10px] text-amber-600">
-                ★ Scanned Paper Slip • Registered {viewingParchiOrder.created} ★
+                <div className="text-center pt-2 text-[10px] text-amber-600">
+                  ★ Paper Slip • Registered {viewingParchiOrder.created} ★
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="mt-4 flex justify-end">
+            <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 onClick={() => setViewingParchiOrder(null)}
                 className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"

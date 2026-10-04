@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import { getCRMStore } from "@/lib/store";
 
 interface NavGroup {
@@ -385,16 +386,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header Bar for Mobile Toggle */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 lg:hidden sticky top-0 z-30">
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="p-2 rounded-xl text-slate-600 hover:bg-slate-100"
-          >
-            <Menu size={20} />
-          </button>
-          <div className="font-bold text-sm text-slate-900">Workforce CRM</div>
-          <LanguageSwitcher />
+        {/* Top Header Bar */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden cursor-pointer"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>{t("syncLive", "Cloud Live Synced")}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <NotificationCenter isEmployee={false} />
+            <LanguageSwitcher />
+          </div>
         </header>
 
         {/* Page Content */}
