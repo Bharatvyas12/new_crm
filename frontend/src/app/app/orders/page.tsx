@@ -18,6 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   getCRMStore,
   claimOrderInStore,
@@ -27,6 +30,11 @@ import {
 } from "@/lib/store";
 
 export default function EmployeeOrdersPage() {
+  const { user } = useAuth();
+  const { t, lang } = useLanguage();
+
+  const employeeName = user?.full_name || user?.name || "Bharat vyas";
+
   const [tab, setTab] = useState<"pool" | "my">("pool");
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [claimedId, setClaimedId] = useState<string | null>(null);
@@ -50,12 +58,21 @@ export default function EmployeeOrdersPage() {
   };
 
   const poolOrders = orders.filter((o) => o.status === "Broadcasted");
-  const myOrders = orders.filter((o) => o.status !== "Broadcasted" && o.status !== "Draft" && o.status !== "Cancelled");
+  const myOrders = orders.filter(
+    (o) =>
+      o.status !== "Broadcasted" &&
+      o.status !== "Draft" &&
+      o.status !== "Cancelled"
+  );
 
   const handleClaim = (order: OrderItem) => {
-    claimOrderInStore(order.id, "Bharat vyas");
+    claimOrderInStore(order.id, employeeName);
     setClaimedId(order.id);
-    showToast(`✓ Order ${order.orderCode} claimed! Moved to "My Orders".`);
+    showToast(
+      lang === "hi"
+        ? `✓ ऑर्डर ${order.orderCode} आपके नाम असाइन हुआ!`
+        : `✓ Order ${order.orderCode} claimed! Moved to "My Orders".`
+    );
     setTimeout(() => {
       setClaimedId(null);
       setTab("my");
@@ -70,11 +87,15 @@ export default function EmployeeOrdersPage() {
     else if (order.status === "Ready") nextStatus = "Delivered";
 
     updateOrderStatusInStore(order.id, nextStatus);
-    showToast(`Order ${order.orderCode} status updated to: ${nextStatus}`);
+    showToast(
+      lang === "hi"
+        ? `ऑर्डर ${order.orderCode} स्थिति: ${nextStatus}`
+        : `Order ${order.orderCode} status updated to: ${nextStatus}`
+    );
   };
 
   return (
-    <div className="space-y-4 pb-28">
+    <div className="space-y-4 pb-28 font-sans">
       {/* Toast */}
       {toastMessage && (
         <motion.div
@@ -90,12 +111,21 @@ export default function EmployeeOrdersPage() {
       <div>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Order Dispatch & Delivery</h1>
-            <p className="text-xs text-slate-500 mt-0.5">Real-time shop order pool & active assignments</p>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              {lang === "hi" ? "ऑर्डर डिस्पैच एवं डिलीवरी" : "Order Dispatch & Delivery"}
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {lang === "hi"
+                ? "लाइव दुकान ऑर्डर पूल और सक्रिय असाइनमेंट"
+                : "Real-time shop order pool & active assignments"}
+            </p>
           </div>
-          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold text-[11px] rounded-full border border-emerald-200">
-            Live Synced
-          </span>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold text-[11px] rounded-full border border-emerald-200 shrink-0">
+              {lang === "hi" ? "लाइव सिंक" : "Live Synced"}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -108,7 +138,9 @@ export default function EmployeeOrdersPage() {
           }`}
         >
           <Package size={14} />
-          <span>Available Pool ({poolOrders.length})</span>
+          <span>
+            {lang === "hi" ? "उपलब्ध पूल" : "Available Pool"} ({poolOrders.length})
+          </span>
         </button>
         <button
           onClick={() => setTab("my")}
@@ -117,7 +149,9 @@ export default function EmployeeOrdersPage() {
           }`}
         >
           <Truck size={14} />
-          <span>My Orders ({myOrders.length})</span>
+          <span>
+            {lang === "hi" ? "मेरे ऑर्डर्स" : "My Orders"} ({myOrders.length})
+          </span>
         </button>
       </div>
 
@@ -126,9 +160,13 @@ export default function EmployeeOrdersPage() {
           {poolOrders.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 space-y-2">
               <Package size={36} className="mx-auto text-slate-300" />
-              <p className="font-semibold text-slate-700 text-sm">Order pool is clear</p>
+              <p className="font-semibold text-slate-700 text-sm">
+                {lang === "hi" ? "कोई उपलब्ध ऑर्डर नहीं है" : "Order pool is clear"}
+              </p>
               <p className="text-xs text-slate-400">
-                New customer orders broadcasted by the admin counter will instantly appear here for claiming.
+                {lang === "hi"
+                  ? "एडमिन काउंटर द्वारा बनाए गए नए ऑर्डर यहां तुरंत दिखाई देंगे।"
+                  : "New customer orders broadcasted by the admin counter will instantly appear here for claiming."}
               </p>
             </div>
           ) : (
@@ -154,13 +192,13 @@ export default function EmployeeOrdersPage() {
                     <h3 className="font-bold text-slate-900 text-sm mt-1">{order.customerName}</h3>
                   </div>
                   <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                    {order.itemsCount} {order.itemsCount === 1 ? "Item" : "Items"}
+                    {order.itemsCount} {order.itemsCount === 1 ? (lang === "hi" ? "आइटम" : "Item") : (lang === "hi" ? "आइटम" : "Items")}
                   </span>
                 </div>
 
                 {order.itemsDescription && (
                   <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <strong>Items:</strong> {order.itemsDescription}
+                    <strong>{lang === "hi" ? "सामान सूची:" : "Items:"}</strong> {order.itemsDescription}
                   </p>
                 )}
 
@@ -183,7 +221,7 @@ export default function EmployeeOrdersPage() {
 
                 {order.notes && (
                   <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                    <strong>Note:</strong> {order.notes}
+                    <strong>{lang === "hi" ? "विशेष निर्देश:" : "Note:"}</strong> {order.notes}
                   </p>
                 )}
 
@@ -194,16 +232,24 @@ export default function EmployeeOrdersPage() {
                       className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5"
                     >
                       <FileText size={13} />
-                      <span>Slip</span>
+                      <span>{lang === "hi" ? "पर्ची" : "Slip"}</span>
                     </button>
                   )}
                   <button
                     onClick={() => handleClaim(order)}
                     disabled={claimedId === order.id}
-                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-xs"
+                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                   >
                     <Package size={14} />
-                    <span>{claimedId === order.id ? "Claiming..." : "Claim This Order"}</span>
+                    <span>
+                      {claimedId === order.id
+                        ? lang === "hi"
+                          ? "असाइन हो रहा है..."
+                          : "Claiming..."
+                        : lang === "hi"
+                        ? "यह ऑर्डर क्लेम करें"
+                        : "Claim This Order"}
+                    </span>
                   </button>
                 </div>
               </motion.div>
@@ -215,9 +261,13 @@ export default function EmployeeOrdersPage() {
           {myOrders.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 space-y-2">
               <Truck size={36} className="mx-auto text-slate-300" />
-              <p className="font-semibold text-slate-700 text-sm">No active orders assigned</p>
+              <p className="font-semibold text-slate-700 text-sm">
+                {lang === "hi" ? "कोई सक्रिय ऑर्डर नहीं है" : "No active orders assigned"}
+              </p>
               <p className="text-xs text-slate-400">
-                Go to the Available Pool tab above to claim incoming dispatch orders.
+                {lang === "hi"
+                  ? "उपलब्ध पूल से ऑर्डर स्वीकार करने के लिए ऊपर दिए गए टैब पर जाएं।"
+                  : "Go to the Available Pool tab above to claim incoming dispatch orders."}
               </p>
             </div>
           ) : (
@@ -254,7 +304,7 @@ export default function EmployeeOrdersPage() {
 
                 {order.itemsDescription && (
                   <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <strong>Items ({order.itemsCount}):</strong> {order.itemsDescription}
+                    <strong>{lang === "hi" ? "सामान:" : "Items"} ({order.itemsCount}):</strong> {order.itemsDescription}
                   </p>
                 )}
 
@@ -284,7 +334,7 @@ export default function EmployeeOrdersPage() {
                         : "bg-slate-100 text-slate-700"
                     }`}
                   >
-                    1. Claimed
+                    1. {lang === "hi" ? "स्वीकृत" : "Claimed"}
                   </span>
                   <span
                     className={`p-1 rounded ${
@@ -295,7 +345,7 @@ export default function EmployeeOrdersPage() {
                         : "bg-slate-50 text-slate-400"
                     }`}
                   >
-                    2. Packing
+                    2. {lang === "hi" ? "पैकिंग" : "Packing"}
                   </span>
                   <span
                     className={`p-1 rounded ${
@@ -306,7 +356,7 @@ export default function EmployeeOrdersPage() {
                         : "bg-slate-50 text-slate-400"
                     }`}
                   >
-                    3. Ready
+                    3. {lang === "hi" ? "तैयार" : "Ready"}
                   </span>
                   <span
                     className={`p-1 rounded ${
@@ -315,7 +365,7 @@ export default function EmployeeOrdersPage() {
                         : "bg-slate-50 text-slate-400"
                     }`}
                   >
-                    4. Delivered
+                    4. {lang === "hi" ? "डिलीवर" : "Delivered"}
                   </span>
                 </div>
 
@@ -323,20 +373,20 @@ export default function EmployeeOrdersPage() {
                 {order.status !== "Delivered" ? (
                   <button
                     onClick={() => advanceStatus(order)}
-                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs"
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                   >
                     <ArrowRight size={14} />
                     <span>
-                      {order.status === "Claimed" && "Start Packing"}
-                      {order.status === "Packing" && "Mark Packed"}
-                      {order.status === "Packed" && "Mark Ready for Dispatch"}
-                      {order.status === "Ready" && "Confirm Customer Handover (Delivered)"}
+                      {order.status === "Claimed" && (lang === "hi" ? "पैकिंग शुरू करें" : "Start Packing")}
+                      {order.status === "Packing" && (lang === "hi" ? "पैकिंग पूरी मार्क करें" : "Mark Packed")}
+                      {order.status === "Packed" && (lang === "hi" ? "डिस्पैच हेतु तैयार मार्क करें" : "Mark Ready for Dispatch")}
+                      {order.status === "Ready" && (lang === "hi" ? "ग्राहक को सुपुर्द (डिलीवर)" : "Confirm Customer Handover (Delivered)")}
                     </span>
                   </button>
                 ) : (
                   <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5">
                     <CheckCircle size={15} className="text-emerald-600" />
-                    <span>Delivered Successfully</span>
+                    <span>{lang === "hi" ? "सफलतापूर्वक डिलीवर हुआ" : "Delivered Successfully"}</span>
                   </div>
                 )}
               </motion.div>
@@ -350,7 +400,9 @@ export default function EmployeeOrdersPage() {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-4 space-y-3">
             <div className="flex items-center justify-between border-b pb-2">
-              <h3 className="font-bold text-sm text-slate-900">Order Slip / Parchi</h3>
+              <h3 className="font-bold text-sm text-slate-900">
+                {lang === "hi" ? "ऑर्डर पर्ची / स्लिप" : "Order Slip / Parchi"}
+              </h3>
               <button onClick={() => setViewingParchi(null)} className="p-1 text-slate-400 hover:text-slate-700">
                 <X size={18} />
               </button>
@@ -363,9 +415,9 @@ export default function EmployeeOrdersPage() {
             </div>
             <button
               onClick={() => setViewingParchi(null)}
-              className="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold"
+              className="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
             >
-              Close
+              {lang === "hi" ? "बंद करें" : "Close"}
             </button>
           </div>
         </div>

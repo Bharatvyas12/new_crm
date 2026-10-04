@@ -38,6 +38,12 @@ export const setLocalStoreVersion = (v: number) => {
   } catch {}
 };
 
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-cache, no-store, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 /**
  * Pushes local CRM store updates to the cloud backend
  */
@@ -47,10 +53,11 @@ export const pushStoreToCloud = async (storeData: CRMStoreData): Promise<boolean
     const baseUrl = getApiBaseUrl();
     const currentVersion = getLocalStoreVersion();
 
-    const response = await fetch(`${baseUrl}/sync/store`, {
+    const response = await fetch(`${baseUrl}/sync/store?_t=${Date.now()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...NO_CACHE_HEADERS,
       },
       body: JSON.stringify({
         data: storeData,
@@ -85,7 +92,10 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     if (!force && localVersion > 0) {
       // Quick version check before fetching full payload
       try {
-        const verRes = await fetch(`${baseUrl}/sync/version`, { cache: "no-store" });
+        const verRes = await fetch(`${baseUrl}/sync/version?_t=${Date.now()}`, {
+          cache: "no-store",
+          headers: NO_CACHE_HEADERS,
+        });
         if (verRes.ok) {
           const verData = await verRes.json();
           if (verData.version <= localVersion) {
@@ -98,7 +108,10 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
       }
     }
 
-    const response = await fetch(`${baseUrl}/sync/store`, { cache: "no-store" });
+    const response = await fetch(`${baseUrl}/sync/store?_t=${Date.now()}`, {
+      cache: "no-store",
+      headers: NO_CACHE_HEADERS,
+    });
     if (response.ok) {
       const payload = await response.json();
       if (payload.data && typeof payload.data === "object") {
@@ -139,16 +152,16 @@ export const initCloudSync = () => {
   // Unconditional initial force-pull immediately on page load
   pullStoreFromCloud(true);
 
-  // Periodic polling every 1.8 seconds for instant cross-device sync
+  // Periodic polling every 1.5 seconds for instant cross-device sync
   if (pollingTimer) clearInterval(pollingTimer);
   pollingTimer = setInterval(() => {
     pullStoreFromCloud(false);
-  }, 1800);
+  }, 1500);
 
   // Sync immediately when user switches back to tab or screen turns on
   const handleVisibilityOrFocus = () => {
     if (document.visibilityState === "visible") {
-      pullStoreFromCloud(false);
+      pullStoreFromCloud(true);
     }
   };
 

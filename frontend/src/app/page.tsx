@@ -1,115 +1,221 @@
 "use client";
 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { motion } from "framer-motion";
-import { api } from "@/lib/api";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
-
-const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
-});
-
-type LoginForm = z.infer<typeof loginSchema>;
+import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { getCRMStore } from "@/lib/store";
+import { Lock, ArrowRight, ShieldCheck, AlertTriangle, UserCheck, KeyRound } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema)
-  });
+  const { t, lang } = useLanguage();
 
-  const onSubmit = async (data: LoginForm) => {
-    try {
-      // Simulate API call since backend may not be ready
-      // const response = await api.post('/auth/login', data);
-      
-      // Mock login for now based on email
-      const role = data.email.includes("admin") ? "ADMIN" : "EMPLOYEE";
-      
-      login({
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    const inputId = identifier.trim().toLowerCase();
+    const inputPass = password.trim();
+
+    const store = getCRMStore();
+    const employees = store.employees || [];
+
+    // Find employee by email or code
+    const matched = employees.find(
+      (emp) =>
+        emp.email.toLowerCase() === inputId ||
+        emp.code.toLowerCase() === inputId
+    );
+
+    // Also check hardcoded fallback for default admin
+    const isAdminDefault = inputId === "admin@crm.com" && inputPass === "admin123";
+
+    if (isAdminDefault || (matched && (matched.code.includes("ADMIN") || matched.department === "Management") && (matched.initialPassword === inputPass || inputPass === "admin123"))) {
+      const adminUser = matched || {
         id: "1",
-        email: data.email,
-        name: data.email.split('@')[0],
-        role: role
+        code: "ADMIN001",
+        name: "System Administrator",
+        email: "admin@crm.com",
+      };
+      login({
+        id: adminUser.id,
+        email: adminUser.email,
+        full_name: adminUser.name,
+        name: adminUser.name,
+        role: "ADMIN",
+        employee_id: "ADMIN001",
+        is_superuser: true,
       });
-
-      if (role === 'ADMIN') {
-        router.push('/admin');
-      } else {
-        router.push('/app');
-      }
-    } catch (error) {
-      console.error(error);
+      setIsSubmitting(false);
+      router.push("/admin");
+      return;
     }
+
+    if (matched) {
+      // Validate password
+      const validPass = matched.initialPassword || "Emp@2026";
+      if (inputPass === validPass || inputPass === "Emp@2026") {
+        login({
+          id: matched.id,
+          email: matched.email,
+          full_name: matched.name,
+          name: matched.name,
+          role: "EMPLOYEE",
+          employee_id: matched.code,
+        });
+        setIsSubmitting(false);
+        router.push("/app");
+        return;
+      }
+    }
+
+    // Invalid credentials
+    setIsSubmitting(false);
+    setErrorMessage(
+      lang === "hi"
+        ? "अमान्य आईडी/कोड या पासवर्ड। कृपया व्यवस्थापक से संपर्क करें।"
+        : "Invalid Employee Code/Email or Password. Please verify credentials."
+    );
+  };
+
+  const handleQuickFill = (code: string, pass: string) => {
+    setIdentifier(code);
+    setPassword(pass);
+    setErrorMessage(null);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary via-background to-background"></div>
-      
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-md relative z-10"
-      >
-        <Card className="border-muted/30 shadow-2xl bg-card/80 backdrop-blur-sm">
-          <CardHeader className="text-center space-y-4 pb-8">
-            <motion.div 
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2 }}
-              className="w-16 h-16 bg-primary/10 rounded-2xl mx-auto flex items-center justify-center border border-primary/20"
-            >
-              <div className="w-8 h-8 bg-primary rounded-lg transform rotate-45"></div>
-            </motion.div>
-            <div>
-              <CardTitle className="text-5xl font-serif text-primary mb-2">Workforce</CardTitle>
-              <CardDescription className="text-lg">Premium Operations Control</CardDescription>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-slate-100 relative overflow-hidden font-sans">
+      {/* Background glow effects */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="w-full max-w-md relative z-10 space-y-6">
+        {/* Top bar with Language Switcher */}
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold tracking-wider uppercase">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Enterprise Gateway</span>
+          </div>
+          <LanguageSwitcher className="bg-slate-800/80 border-slate-700" />
+        </div>
+
+        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-md rounded-3xl p-7 sm:p-9 shadow-2xl space-y-6">
+          <div className="text-center space-y-3">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto shadow-inner">
+              <Lock size={26} />
             </div>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium tracking-wide">Email</label>
-                <input 
-                  {...register("email")}
-                  type="email" 
-                  className="w-full p-3 rounded-lg border bg-background/50 focus:bg-background focus:ring-2 focus:ring-primary/50 transition-all outline-none" 
-                  placeholder="admin@example.com"
-                />
-                {errors.email && <p className="text-destructive text-sm mt-1">{errors.email.message}</p>}
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-white">Workforce CRM</h1>
+              <p className="text-xs text-slate-400 mt-1">
+                {lang === "hi"
+                  ? "हाज़िरी, टास्क, ऑर्डर्स और पेरोल कंट्रोल पोर्टल"
+                  : "Field Operations, Attendance & Dispatch Control"}
+              </p>
+            </div>
+          </div>
+
+          {errorMessage && (
+            <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-xs text-red-400 flex items-center gap-2.5 animate-in fade-in">
+              <AlertTriangle size={16} className="shrink-0 text-red-400" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                {lang === "hi" ? "कर्मचारी कोड / ईमेल आईडी" : "Employee Code / Email"}
+              </label>
+              <input
+                type="text"
+                required
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="E001 or admin@crm.com"
+                className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  {lang === "hi" ? "पासवर्ड" : "Password"}
+                </label>
+                <span className="text-[10px] text-slate-500 font-mono">Emp@2026 / admin123</span>
               </div>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium tracking-wide">Password</label>
-                </div>
-                <input 
-                  {...register("password")}
-                  type="password" 
-                  className="w-full p-3 rounded-lg border bg-background/50 focus:bg-background focus:ring-2 focus:ring-primary/50 transition-all outline-none" 
-                  placeholder="••••••••"
-                />
-                {errors.password && <p className="text-destructive text-sm mt-1">{errors.password.message}</p>}
-              </div>
-              <Button 
-                type="submit" 
-                className="w-full h-12 text-lg font-medium tracking-wide shadow-lg hover:shadow-primary/25 transition-all" 
-                disabled={isSubmitting}
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+            >
+              <span>{isSubmitting ? "Verifying..." : lang === "hi" ? "लॉगिन करें" : "Sign In to Workspace"}</span>
+              <ArrowRight size={16} />
+            </button>
+          </form>
+
+          {/* Quick Login Test Chips */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              {lang === "hi" ? "त्वरित परीक्षण लॉगिन (Quick Test)" : "Quick Test Access"}
+            </span>
+            <div className="grid grid-cols-3 gap-2 text-[11px]">
+              <button
+                type="button"
+                onClick={() => handleQuickFill("admin@crm.com", "admin123")}
+                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors"
               >
-                {isSubmitting ? "Authenticating..." : "Sign In"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </motion.div>
+                <span className="block font-bold text-blue-400">Admin</span>
+                <span className="text-[9px] text-slate-500 font-mono">admin123</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickFill("E001", "Emp@2026")}
+                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors"
+              >
+                <span className="block font-bold text-emerald-400">E001 (Bharat)</span>
+                <span className="text-[9px] text-slate-500 font-mono">Emp@2026</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickFill("EMP002", "Emp@2026")}
+                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors"
+              >
+                <span className="block font-bold text-purple-400">EMP002 (Priya)</span>
+                <span className="text-[9px] text-slate-500 font-mono">Emp@2026</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+            <div className="flex items-center gap-1 text-emerald-400 font-medium">
+              <ShieldCheck size={14} />
+              <span>Multi-Device Sync Active</span>
+            </div>
+            <span>v2.4.0</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -113,10 +113,12 @@ def _load_store_from_disk():
         try:
             with open(STORE_FILE_PATH, "r", encoding="utf-8") as f:
                 payload = json.load(f)
-                _store_cache = payload.get("data", _get_initial_clean_store())
-                _store_version = payload.get("version", 1)
-                _store_updated_at = payload.get("updated_at", datetime.now(timezone.utc).isoformat())
-                return
+                data = payload.get("data", {})
+                if isinstance(data, dict) and "employees" in data:
+                    _store_cache = data
+                    _store_version = payload.get("version", 1)
+                    _store_updated_at = payload.get("updated_at", datetime.now(timezone.utc).isoformat())
+                    return
         except Exception as e:
             print(f"[Sync] Error reading store from disk: {e}")
     
@@ -175,12 +177,27 @@ async def update_cloud_store(payload: SyncPushPayload):
     """Atomically updates the cloud store and broadcasts new version."""
     global _store_cache, _store_version, _store_updated_at
     
-    incoming_data = payload.data
-    if not isinstance(incoming_data, dict):
+    incoming = payload.data
+    if not isinstance(incoming, dict):
         raise HTTPException(status_code=400, detail="Invalid data payload")
     
-    # Merge / Replace store cache
-    _store_cache = incoming_data
+    # Ensure baseline schema integrity
+    baseline = _get_initial_clean_store()
+    merged = {
+        "settings": incoming.get("settings", _store_cache.get("settings", baseline["settings"])),
+        "employees": incoming.get("employees", _store_cache.get("employees", baseline["employees"])),
+        "activeShifts": incoming.get("activeShifts", _store_cache.get("activeShifts", {})),
+        "orders": incoming.get("orders", _store_cache.get("orders", [])),
+        "tasks": incoming.get("tasks", _store_cache.get("tasks", [])),
+        "attendance": incoming.get("attendance", _store_cache.get("attendance", [])),
+        "corrections": incoming.get("corrections", _store_cache.get("corrections", [])),
+        "leaves": incoming.get("leaves", _store_cache.get("leaves", [])),
+        "advances": incoming.get("advances", _store_cache.get("advances", [])),
+        "ledger": incoming.get("ledger", _store_cache.get("ledger", [])),
+        "complaints": incoming.get("complaints", _store_cache.get("complaints", [])),
+    }
+
+    _store_cache = merged
     _store_version += 1
     _store_updated_at = datetime.now(timezone.utc).isoformat()
     
