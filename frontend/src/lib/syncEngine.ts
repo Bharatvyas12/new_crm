@@ -1,7 +1,7 @@
 "use client";
 
 // Unified High-Speed Cross-Device Real-Time Cloud Synchronization Engine
-import { CRMStoreData, getCRMStore, saveCRMStore } from "./store";
+import { CRMStoreData } from "./store";
 
 const VERSION_KEY = "wcrm_store_version";
 let isSyncing = false;
@@ -22,12 +22,12 @@ export const getApiBaseUrl = (): string => {
 };
 
 export const getLocalStoreVersion = (): number => {
-  if (typeof window === "undefined") return 1;
+  if (typeof window === "undefined") return 0;
   try {
     const v = localStorage.getItem(VERSION_KEY);
-    return v ? parseInt(v, 10) || 1 : 1;
+    return v ? parseInt(v, 10) || 0 : 0;
   } catch {
-    return 1;
+    return 0;
   }
 };
 
@@ -67,8 +67,7 @@ export const pushStoreToCloud = async (storeData: CRMStoreData): Promise<boolean
       return true;
     }
   } catch (err) {
-    // Render might be waking up or device offline; optimistic local store remains intact
-    console.debug("[SyncEngine] Push to cloud deferred:", err);
+    console.debug("[SyncEngine] Push to cloud error:", err);
   }
   return false;
 };
@@ -83,8 +82,8 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     const baseUrl = getApiBaseUrl();
     const localVersion = getLocalStoreVersion();
 
-    if (!force) {
-      // Quick version check before fetching heavy payload
+    if (!force && localVersion > 0) {
+      // Quick version check before fetching full payload
       try {
         const verRes = await fetch(`${baseUrl}/sync/version`, { cache: "no-store" });
         if (verRes.ok) {
@@ -95,7 +94,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           }
         }
       } catch {
-        // If version check fails, fall through to full fetch or abort
+        // Fall through to full fetch
       }
     }
 
@@ -123,7 +122,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
       }
     }
   } catch (err) {
-    console.debug("[SyncEngine] Pull failed (server waking up or offline):", err);
+    console.debug("[SyncEngine] Pull failed:", err);
   } finally {
     isSyncing = false;
   }
@@ -137,13 +136,14 @@ export const initCloudSync = () => {
   if (typeof window === "undefined" || syncInitialized) return;
   syncInitialized = true;
 
-  // Initial pull immediately on load
+  // Unconditional initial force-pull immediately on page load
   pullStoreFromCloud(true);
 
-  // Periodic polling every 2.5 seconds for instant cross-device updates
+  // Periodic polling every 1.8 seconds for instant cross-device sync
+  if (pollingTimer) clearInterval(pollingTimer);
   pollingTimer = setInterval(() => {
     pullStoreFromCloud(false);
-  }, 2500);
+  }, 1800);
 
   // Sync immediately when user switches back to tab or screen turns on
   const handleVisibilityOrFocus = () => {

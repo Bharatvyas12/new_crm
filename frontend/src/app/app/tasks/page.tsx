@@ -16,6 +16,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   getCRMStore,
   submitTaskEvidenceInStore,
@@ -25,6 +27,7 @@ import {
 } from "@/lib/store";
 
 export default function EmployeeTasksPage() {
+  const { t, lang } = useLanguage();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [evidenceNote, setEvidenceNote] = useState("");
@@ -86,12 +89,19 @@ export default function EmployeeTasksPage() {
       <div>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Work Tasks & SOPs</h1>
-            <p className="text-xs text-slate-500 mt-0.5">Tasks assigned to you with evidence verification</p>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              {lang === "hi" ? "कार्य और कार्यप्रणाली (Tasks)" : "Work Tasks & SOPs"}
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {lang === "hi" ? "आपको सौंपे गए कार्य और सबूत सत्यापन" : "Tasks assigned to you with evidence verification"}
+            </p>
           </div>
-          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[11px] rounded-full border border-blue-200">
-            {tasks.length} Assigned
-          </span>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[11px] rounded-full border border-blue-200 shrink-0">
+              {tasks.length} {lang === "hi" ? "कार्य" : "Assigned"}
+            </span>
+          </div>
         </div>
       </div>
 

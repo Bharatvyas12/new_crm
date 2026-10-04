@@ -5,17 +5,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Clock, CheckSquare, Package, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 const employeeNav = [
-  { href: "/app", label: "Home", icon: Home },
-  { href: "/app/attendance", label: "Attendance", icon: Clock },
-  { href: "/app/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/app/orders", label: "Orders", icon: Package },
-  { href: "/app/complaints", label: "Alerts", icon: Bell },
+  { href: "/app", labelKey: "dashboard", defaultLabel: "Home", icon: Home },
+  { href: "/app/attendance", labelKey: "attendance", defaultLabel: "Attendance", icon: Clock },
+  { href: "/app/tasks", labelKey: "tasks", defaultLabel: "Tasks", icon: CheckSquare },
+  { href: "/app/orders", labelKey: "orders", defaultLabel: "Orders", icon: Package },
+  { href: "/app/complaints", labelKey: "complaints", defaultLabel: "Alerts", icon: Bell },
 ];
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { t } = useLanguage();
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col font-sans relative overflow-x-hidden">
@@ -42,7 +44,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
                 )}
               >
                 <Icon size={20} className={cn("mb-1", isActive && "stroke-[2.5px]")} />
-                <span className="text-[11px] leading-tight">{item.label}</span>
+                <span className="text-[11px] leading-tight">{t(item.labelKey, item.defaultLabel)}</span>
               </Link>
             );
           })}

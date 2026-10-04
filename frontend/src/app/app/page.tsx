@@ -28,6 +28,8 @@ import {
   Mail,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   getCRMStore,
   applyAdvanceInStore,
@@ -41,6 +43,7 @@ import {
 
 export default function EmployeeHomePage() {
   const { user, logout } = useAuth();
+  const { t, lang } = useLanguage();
 
   const employeeName = user?.full_name || "Bharat vyas";
   const employeeCode = user?.employee_id ? `EMP${user.employee_id.substring(0, 5).toUpperCase()}` : "E001";
@@ -292,12 +295,13 @@ export default function EmployeeHomePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <LanguageSwitcher />
           <button
             onClick={() => setShowProfileModal(true)}
             className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
           >
             <User size={14} className="text-blue-600" />
-            <span>Profile</span>
+            <span>{lang === "hi" ? "प्रोफ़ाइल" : "Profile"}</span>
           </button>
         </div>
       </div>
@@ -305,16 +309,20 @@ export default function EmployeeHomePage() {
       {/* Hero Greeting */}
       <div className="space-y-0.5">
         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          Hello, {firstName}
+          {lang === "hi" ? `नमस्ते, ${firstName}` : `Hello, ${firstName}`}
         </h1>
-        <p className="text-sm text-slate-500 font-normal">Your day at a glance.</p>
+        <p className="text-sm text-slate-500 font-normal">
+          {lang === "hi" ? "आज का लाइव कार्य और हाज़िरी विवरण।" : "Your day at a glance."}
+        </p>
       </div>
 
       {/* Today Attendance Card */}
       <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-bold text-slate-900 leading-none">Today</h3>
+            <h3 className="text-lg font-bold text-slate-900 leading-none">
+              {lang === "hi" ? "आज की हाज़िरी" : "Today"}
+            </h3>
             <p className="text-xs text-slate-400 mt-1">
               {shiftState === "NOT_STARTED"
                 ? `Not classified yet - ${formatHoursMinutes(secondsElapsed)}`
@@ -383,7 +391,7 @@ export default function EmployeeHomePage() {
               className="w-full py-3.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-2xl font-bold text-sm shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Clock size={18} />
-              <span>Check In Now (GPS / Shop QR)</span>
+              <span>{lang === "hi" ? "चेक-इन करें (GPS / दुकान QR)" : "Check In Now (GPS / Shop QR)"}</span>
             </button>
           )}
 
@@ -394,14 +402,14 @@ export default function EmployeeHomePage() {
                 className="py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Coffee size={16} className="text-amber-600" />
-                <span>Start Break</span>
+                <span>{lang === "hi" ? "ब्रेक शुरू करें" : "Start Break"}</span>
               </button>
               <button
                 onClick={handleCheckOut}
                 className="py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
               >
                 <LogOut size={16} />
-                <span>Check Out</span>
+                <span>{lang === "hi" ? "चेक-आउट करें" : "Check Out"}</span>
               </button>
             </div>
           )}
@@ -412,13 +420,13 @@ export default function EmployeeHomePage() {
               className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-sm shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <Coffee size={18} />
-              <span>End Break & Resume Work</span>
+              <span>{lang === "hi" ? "ब्रेक समाप्त और काम शुरू" : "End Break & Resume Work"}</span>
             </button>
           )}
 
           {shiftState === "COMPLETED" && (
             <div className="text-center py-2.5 text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5">
-              <CheckCircle2 size={16} /> Day Shift Finished ({formatHoursMinutes(secondsElapsed)})
+              <CheckCircle2 size={16} /> {lang === "hi" ? "दिन की शिफ्ट पूरी हुई" : "Day Shift Finished"} ({formatHoursMinutes(secondsElapsed)})
             </div>
           )}
         </div>
