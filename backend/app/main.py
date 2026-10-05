@@ -18,6 +18,29 @@ from app.routers import (
     settings as settings_router,
     sync,
 )
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Auto-create tables on startup in Render PostgreSQL
+    try:
+        from app.database import engine, Base
+        import app.models  # Ensure all model tables are registered
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("[Startup] Database tables initialized successfully.")
+    except Exception as e:
+        print(f"[Startup] DB initialization note: {e}")
+
+    # Load persistent store from PostgreSQL
+    try:
+        from app.routers.sync import load_store_from_postgres
+        await load_store_from_postgres()
+    except Exception as e:
+        print(f"[Startup] Sync store load note: {e}")
+
+    yield
 
 
 def create_app() -> FastAPI:
@@ -26,6 +49,7 @@ def create_app() -> FastAPI:
         version="1.0.0",
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         docs_url=f"{settings.API_V1_STR}/docs",
+        lifespan=lifespan,
     )
 
     # Permissive CORS middleware for cross-origin web/mobile clients

@@ -104,6 +104,58 @@ def _save_store_to_disk():
         print(f"[Sync] Error saving store to disk: {e}")
 
 
+async def load_store_from_postgres() -> bool:
+    """Loads latest sync store from persistent PostgreSQL table if available."""
+    global _store_cache, _store_version, _store_updated_at
+    try:
+        from app.database import AsyncSessionLocal, CloudSyncStore
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
+            if record and isinstance(record.data, dict) and "employees" in record.data:
+                _store_cache = record.data
+                _store_version = record.version
+                _store_updated_at = record.updated_at
+                print(f"[Sync-Postgres] Successfully loaded store v{_store_version} from database.")
+                return True
+    except Exception as e:
+        # Fallback to in-memory/disk store gracefully
+        print(f"[Sync-Postgres] Postgres read note: {e}")
+    return False
+
+
+async def save_store_to_postgres() -> bool:
+    """Saves sync store to persistent PostgreSQL table."""
+    global _store_cache, _store_version, _store_updated_at
+    try:
+        from app.database import AsyncSessionLocal, CloudSyncStore
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
+            if not record:
+                record = CloudSyncStore(
+                    id="default",
+                    version=_store_version,
+                    updated_at=_store_updated_at,
+                    data=_store_cache
+                )
+                session.add(record)
+            else:
+                record.version = _store_version
+                record.updated_at = _store_updated_at
+                record.data = _store_cache
+            await session.commit()
+            print(f"[Sync-Postgres] Successfully persisted store v{_store_version} to PostgreSQL database.")
+            return True
+    except Exception as e:
+        print(f"[Sync-Postgres] Postgres write error: {e}")
+    return False
+
+
 # Initialize store on module load
 _load_store_from_disk()
 
@@ -174,9 +226,42 @@ class SyncPushPayload(BaseModel):
     deleted_order_ids: Optional[list[str]] = None
 
 
+@router.get("/db-status")
+async def get_db_status():
+    """Diagnostic check to confirm PostgreSQL connectivity and sync status."""
+    from app.database import engine, CLEAN_DB_URL, AsyncSessionLocal, CloudSyncStore
+    from sqlalchemy import select, text
+    db_type = "postgresql" if "postgres" in CLEAN_DB_URL else "sqlite"
+    connected = False
+    error_msg = None
+    pg_record = None
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
+            res = await session.execute(stmt)
+            row = res.scalar_one_or_none()
+            if row:
+                pg_record = {"version": row.version, "updated_at": row.updated_at, "keys": list(row.data.keys()) if row.data else []}
+            connected = True
+    except Exception as e:
+        error_msg = str(e)
+
+    return {
+        "status": "ok" if connected else "error",
+        "database_type": db_type,
+        "is_connected": connected,
+        "error": error_msg,
+        "in_memory_version": _store_version,
+        "postgres_record": pg_record,
+    }
+
+
 @router.get("/store")
 async def get_cloud_store():
     """Returns the latest real-time CRM store and version."""
+    await load_store_from_postgres()
     return {
         "status": "ok",
         "version": _store_version,
@@ -204,6 +289,9 @@ async def update_cloud_store(payload: SyncPushPayload):
         raise HTTPException(status_code=400, detail="Invalid data payload")
     
     baseline = _get_initial_clean_store()
+
+    # Pre-fetch latest from postgres if another instance/reboot occurred
+    await load_store_from_postgres()
     
     # Merge active shifts
     merged_shifts = _merge_active_shifts(
@@ -278,8 +366,9 @@ async def update_cloud_store(payload: SyncPushPayload):
     _store_version += 1
     _store_updated_at = datetime.now(timezone.utc).isoformat()
     
-    # Persist to disk
+    # Persist to disk and PostgreSQL
     _save_store_to_disk()
+    await save_store_to_postgres()
     
     return {
         "status": "ok",
@@ -297,6 +386,7 @@ async def reset_cloud_store():
     _store_version += 1
     _store_updated_at = datetime.now(timezone.utc).isoformat()
     _save_store_to_disk()
+    await save_store_to_postgres()
     return {
         "status": "ok",
         "version": _store_version,
