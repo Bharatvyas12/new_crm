@@ -34,7 +34,7 @@ export default function EmployeeOrdersPage() {
   const { user } = useAuth();
   const { t, lang } = useLanguage();
 
-  const employeeName = user?.full_name || user?.name || "Bharat vyas";
+  const employeeName = user?.full_name || user?.name || "Staff";
 
   const [tab, setTab] = useState<"pool" | "my">("pool");
   const [orders, setOrders] = useState<OrderItem[]>([]);

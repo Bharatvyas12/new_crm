@@ -165,9 +165,6 @@ export default function LoginPage() {
     setErrorMessage(null);
   };
 
-  // Staff employees (excluding admin)
-  const staffEmployees = availableEmployees.filter((e) => !e.code.includes("ADMIN"));
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-slate-100 relative overflow-hidden font-sans">
       {/* Background glow effects */}
@@ -256,48 +253,6 @@ export default function LoginPage() {
               <ArrowRight size={16} />
             </button>
           </form>
-
-          {/* Quick Login Test Chips - Dynamically loaded from cloud store */}
-          <div className="pt-3 border-t border-slate-800/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                {lang === "hi" ? "1-क्लिक टेस्ट लॉगिन (Registered IDs)" : "1-Tap Quick Access"}
-              </span>
-              <span className="text-[10px] text-emerald-400 font-mono">
-                {staffEmployees.length} Staff Synced
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-[11px]">
-              {/* Admin Button */}
-              <button
-                type="button"
-                onClick={() => handleQuickFill("admin@crm.com", "admin123")}
-                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors cursor-pointer"
-              >
-                <span className="block font-bold text-blue-400 truncate">Admin</span>
-                <span className="text-[9px] text-slate-500 font-mono">admin123</span>
-              </button>
-
-              {/* Dynamic Staff Buttons (Bharat E001, Somesh E003, etc.) */}
-              {staffEmployees.slice(0, 5).map((emp) => (
-                <button
-                  key={emp.id || emp.code}
-                  type="button"
-                  onClick={() => handleQuickFill(emp.code, emp.initialPassword || "Emp@2026")}
-                  className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-emerald-500/30 rounded-xl text-slate-200 text-center font-medium transition-colors cursor-pointer truncate"
-                  title={`${emp.name} (${emp.code})`}
-                >
-                  <span className="block font-bold text-emerald-400 truncate">
-                    {emp.code} ({emp.name.split(" ")[0]})
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-mono truncate">
-                    {emp.initialPassword || "Emp@2026"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
             <div className="flex items-center gap-1 text-emerald-400 font-medium">

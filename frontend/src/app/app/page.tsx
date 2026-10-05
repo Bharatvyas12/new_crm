@@ -49,8 +49,8 @@ export default function EmployeeHomePage() {
   const { user, logout } = useAuth();
   const { t, lang } = useLanguage();
 
-  const employeeName = user?.full_name || user?.name || "Bharat vyas";
-  const employeeCode = user?.employee_id || "E001";
+  const employeeName = user?.full_name || user?.name || "Staff";
+  const employeeCode = user?.employee_id || "";
   const firstName = employeeName.split(" ")[0];
 
   // Shift States: NOT_STARTED | ACTIVE | ON_BREAK | COMPLETED

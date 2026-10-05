@@ -49,8 +49,8 @@ export default function EmployeeComplaintsPage() {
       visibility: form.visibility,
       subject: form.subject.trim(),
       description: form.description.trim(),
-      raisedBy: user?.full_name || "Bharat vyas",
-      employeeCode: user?.employee_id ? `EMP${user.employee_id.substring(0, 4).toUpperCase()}` : "E001",
+      raisedBy: user?.full_name || user?.name || "Staff",
+      employeeCode: user?.employee_id || "",
       department: "Operations",
     });
 

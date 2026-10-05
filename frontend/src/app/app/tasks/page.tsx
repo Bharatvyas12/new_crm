@@ -31,8 +31,8 @@ import {
 export default function EmployeeTasksPage() {
   const { user } = useAuth();
   const { t, lang } = useLanguage();
-  const empCode = (user?.employee_id || "E001").trim().toUpperCase();
-  const empName = (user?.full_name || user?.name || "Bharat vyas").trim().toLowerCase();
+  const empCode = (user?.employee_id || "").trim().toUpperCase();
+  const empName = (user?.full_name || user?.name || "").trim().toLowerCase();
 
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);

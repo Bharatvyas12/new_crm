@@ -7,7 +7,8 @@ import { useAuth } from "@/lib/hooks/use-auth";
 
 export default function EmployeeAttendancePage() {
   const { user } = useAuth();
-  const employeeCode = user?.employee_id ? `EMP${user.employee_id.substring(0, 5).toUpperCase()}` : "E001";
+  const employeeCode = user?.employee_id || "";
+  const empName = (user?.full_name || user?.name || "").toLowerCase().trim();
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
 
@@ -15,7 +16,9 @@ export default function EmployeeAttendancePage() {
     const loadData = () => {
       const store = getCRMStore();
       const myRecords = (store.attendance || []).filter(
-        (a) => a.employeeCode === employeeCode || a.employeeName.toLowerCase().includes("bharat")
+        (a) =>
+          (employeeCode && a.employeeCode?.toLowerCase() === employeeCode.toLowerCase()) ||
+          (empName && a.employeeName?.toLowerCase() === empName)
       );
       setRecords(myRecords);
     };
