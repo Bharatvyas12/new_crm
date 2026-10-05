@@ -146,10 +146,70 @@ def _save_store_to_disk():
 _load_store_from_disk()
 
 
+def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str = "id", deleted_ids: Optional[list] = None) -> list:
+    """
+    Intelligently merges two lists of dicts by ID without losing data from either device.
+    If an item has the same ID, incoming overrides existing.
+    Items present in existing but absent in incoming are preserved.
+    Items in deleted_ids or marked isDeleted are filtered out.
+    """
+    if not isinstance(existing_list, list):
+        existing_list = []
+    if not isinstance(incoming_list, list):
+        incoming_list = []
+    del_set = set(str(d) for d in (deleted_ids or []))
+
+    merged_map = {}
+    
+    # 1. Load existing items
+    for item in existing_list:
+        if isinstance(item, dict):
+            item_id = str(item.get(key_field) or item.get("code") or item.get("id") or "")
+            if item_id and item_id not in del_set and not item.get("isDeleted"):
+                merged_map[item_id] = item
+
+    # 2. Overlay incoming items
+    for item in incoming_list:
+        if isinstance(item, dict):
+            item_id = str(item.get(key_field) or item.get("code") or item.get("id") or "")
+            if item_id:
+                if item_id in del_set or item.get("isDeleted"):
+                    merged_map.pop(item_id, None)
+                else:
+                    # Preserve high-res receiptPhoto if incoming omitted it
+                    if item_id in merged_map and "receiptPhoto" in merged_map[item_id] and not item.get("receiptPhoto"):
+                        item["receiptPhoto"] = merged_map[item_id]["receiptPhoto"]
+                    merged_map[item_id] = item
+
+    return list(merged_map.values())
+
+
+def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
+    if not isinstance(existing_shifts, dict):
+        existing_shifts = {}
+    if not isinstance(incoming_shifts, dict):
+        incoming_shifts = {}
+    
+    merged = dict(existing_shifts)
+    for emp_code, shift in incoming_shifts.items():
+        if isinstance(shift, dict):
+            existing = merged.get(emp_code)
+            if existing and isinstance(existing, dict):
+                incoming_ts = shift.get("checkInTimestamp", 0)
+                existing_ts = existing.get("checkInTimestamp", 0)
+                if incoming_ts >= existing_ts:
+                    merged[emp_code] = shift
+            else:
+                merged[emp_code] = shift
+    return merged
+
+
 class SyncPushPayload(BaseModel):
     data: Dict[str, Any]
     client_version: Optional[int] = None
     client_id: Optional[str] = None
+    deleted_task_ids: Optional[list[str]] = None
+    deleted_order_ids: Optional[list[str]] = None
 
 
 @router.get("/store")
@@ -174,27 +234,82 @@ async def get_cloud_store_version():
 
 @router.post("/store")
 async def update_cloud_store(payload: SyncPushPayload):
-    """Atomically updates the cloud store and broadcasts new version."""
+    """Atomically updates the cloud store and broadcasts new version with multi-device union merge."""
     global _store_cache, _store_version, _store_updated_at
     
     incoming = payload.data
     if not isinstance(incoming, dict):
         raise HTTPException(status_code=400, detail="Invalid data payload")
     
-    # Ensure baseline schema integrity
     baseline = _get_initial_clean_store()
+    
+    # Merge active shifts
+    merged_shifts = _merge_active_shifts(
+        _store_cache.get("activeShifts", {}),
+        incoming.get("activeShifts", {})
+    )
+
+    # Merge list collections intelligently without cross-device data loss
+    merged_orders = _merge_item_lists(
+        _store_cache.get("orders", []),
+        incoming.get("orders", []),
+        key_field="id",
+        deleted_ids=payload.deleted_order_ids
+    )
+    merged_tasks = _merge_item_lists(
+        _store_cache.get("tasks", []),
+        incoming.get("tasks", []),
+        key_field="id",
+        deleted_ids=payload.deleted_task_ids
+    )
+    merged_attendance = _merge_item_lists(
+        _store_cache.get("attendance", []),
+        incoming.get("attendance", []),
+        key_field="id"
+    )
+    merged_advances = _merge_item_lists(
+        _store_cache.get("advances", []),
+        incoming.get("advances", []),
+        key_field="id"
+    )
+    merged_leaves = _merge_item_lists(
+        _store_cache.get("leaves", []),
+        incoming.get("leaves", []),
+        key_field="id"
+    )
+    merged_corrections = _merge_item_lists(
+        _store_cache.get("corrections", []),
+        incoming.get("corrections", []),
+        key_field="id"
+    )
+    merged_complaints = _merge_item_lists(
+        _store_cache.get("complaints", []),
+        incoming.get("complaints", []),
+        key_field="id"
+    )
+    merged_ledger = _merge_item_lists(
+        _store_cache.get("ledger", []),
+        incoming.get("ledger", []),
+        key_field="id"
+    )
+    merged_employees = _merge_item_lists(
+        _store_cache.get("employees", baseline["employees"]),
+        incoming.get("employees", []),
+        key_field="code"
+    )
+
     merged = {
         "settings": incoming.get("settings", _store_cache.get("settings", baseline["settings"])),
-        "employees": incoming.get("employees", _store_cache.get("employees", baseline["employees"])),
-        "activeShifts": incoming.get("activeShifts", _store_cache.get("activeShifts", {})),
-        "orders": incoming.get("orders", _store_cache.get("orders", [])),
-        "tasks": incoming.get("tasks", _store_cache.get("tasks", [])),
-        "attendance": incoming.get("attendance", _store_cache.get("attendance", [])),
-        "corrections": incoming.get("corrections", _store_cache.get("corrections", [])),
-        "leaves": incoming.get("leaves", _store_cache.get("leaves", [])),
-        "advances": incoming.get("advances", _store_cache.get("advances", [])),
-        "ledger": incoming.get("ledger", _store_cache.get("ledger", [])),
-        "complaints": incoming.get("complaints", _store_cache.get("complaints", [])),
+        "employees": merged_employees if merged_employees else baseline["employees"],
+        "activeShifts": merged_shifts,
+        "orders": merged_orders,
+        "tasks": merged_tasks,
+        "attendance": merged_attendance,
+        "corrections": merged_corrections,
+        "leaves": merged_leaves,
+        "advances": merged_advances,
+        "ledger": merged_ledger,
+        "complaints": merged_complaints,
     }
 
     _store_cache = merged
@@ -208,6 +323,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         "status": "ok",
         "version": _store_version,
         "updated_at": _store_updated_at,
+        "data": _store_cache,
     }
 
 

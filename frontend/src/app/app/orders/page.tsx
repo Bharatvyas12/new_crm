@@ -63,7 +63,10 @@ export default function EmployeeOrdersPage() {
     (o) =>
       o.status !== "Broadcasted" &&
       o.status !== "Draft" &&
-      o.status !== "Cancelled"
+      o.status !== "Cancelled" &&
+      (o.claimedBy?.toLowerCase() === employeeName.toLowerCase() ||
+        o.claimedBy?.toLowerCase()?.includes(employeeName.toLowerCase()) ||
+        employeeName.toLowerCase()?.includes(o.claimedBy?.toLowerCase() || ""))
   );
 
   const handleClaim = (order: OrderItem) => {

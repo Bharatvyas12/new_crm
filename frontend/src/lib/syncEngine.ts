@@ -72,7 +72,10 @@ export const playLiveSoundNotification = () => {
 /**
  * Pushes local CRM store updates to the cloud backend
  */
-export const pushStoreToCloud = async (storeData: CRMStoreData): Promise<boolean> => {
+export const pushStoreToCloud = async (
+  storeData: CRMStoreData,
+  options?: { deletedTaskIds?: string[]; deletedOrderIds?: string[] }
+): Promise<boolean> => {
   if (typeof window === "undefined") return false;
   try {
     const baseUrl = getApiBaseUrl();
@@ -91,6 +94,8 @@ export const pushStoreToCloud = async (storeData: CRMStoreData): Promise<boolean
         data: storeData,
         client_version: currentVersion,
         client_id: typeof navigator !== "undefined" ? navigator.userAgent.substring(0, 50) : "client",
+        deleted_task_ids: options?.deletedTaskIds,
+        deleted_order_ids: options?.deletedOrderIds,
       }),
       signal: controller.signal,
     });
@@ -104,6 +109,10 @@ export const pushStoreToCloud = async (storeData: CRMStoreData): Promise<boolean
       if (result.updated_at) {
         lastKnownUpdatedAt = result.updated_at;
         localStorage.setItem(UPDATED_AT_KEY, result.updated_at);
+      }
+      if (result.data && typeof result.data === "object") {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+        window.dispatchEvent(new Event("wcrm_store_updated"));
       }
       return true;
     }

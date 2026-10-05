@@ -326,7 +326,10 @@ export const getCRMStore = (): CRMStoreData => {
   }
 };
 
-export const saveCRMStore = (data: CRMStoreData) => {
+export const saveCRMStore = (
+  data: CRMStoreData,
+  options?: { deletedTaskIds?: string[]; deletedOrderIds?: string[] }
+) => {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -342,7 +345,7 @@ export const saveCRMStore = (data: CRMStoreData) => {
     }
 
     // Push asynchronously to the cloud backend for cross-device sync
-    pushStoreToCloud(data);
+    pushStoreToCloud(data, options);
   } catch (err) {
     console.error("Failed to save store:", err);
   }
@@ -740,7 +743,7 @@ export const updateOrderStatusInStore = (orderId: string, status: OrderItem["sta
 export const deleteOrderInStore = (orderId: string) => {
   const store = getCRMStore();
   store.orders = store.orders.filter((o) => o.id !== orderId);
-  saveCRMStore(store);
+  saveCRMStore(store, { deletedOrderIds: [orderId] });
   return true;
 };
 
@@ -830,7 +833,7 @@ export const updateTaskStatusInStore = (taskId: string, status: TaskItem["status
 export const deleteTaskInStore = (taskId: string) => {
   const store = getCRMStore();
   store.tasks = store.tasks.filter((t) => t.id !== taskId);
-  saveCRMStore(store);
+  saveCRMStore(store, { deletedTaskIds: [taskId] });
   return true;
 };
 
