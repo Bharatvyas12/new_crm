@@ -39,8 +39,10 @@ export default function AdminAttendanceRegisterPage() {
       const activeShifts = store.activeShifts || {};
       const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 
+      const staffEmployees = employees.filter((emp) => !emp.code.includes("ADMIN") && emp.department !== "Management");
+
       // Build today's live employee roster
-      const todayRecords: AttendanceRecord[] = employees.map((emp) => {
+      const todayRecords: AttendanceRecord[] = staffEmployees.map((emp) => {
         const existing = atts.find((a) => a.employeeCode === emp.code && a.date === today);
         if (existing) return existing;
         const shift = activeShifts[emp.code];

@@ -237,44 +237,6 @@ export const cleanBaselineStore: CRMStoreData = {
       casualLeaves: 12,
       sickLeaves: 8,
     },
-    {
-      id: "2",
-      code: "E001",
-      name: "Bharat vyas",
-      email: "bharat1@crm.com",
-      department: "Operations",
-      designation: "Supervisor",
-      type: "Full Time",
-      status: "Active",
-      joined: "Oct 01, 2026",
-      phone: "08005567626",
-      initialPassword: "Emp@2026",
-      baseSalary: 35000,
-      bankAccount: "112233445566",
-      bankIfsc: "SBIN0004321",
-      upiId: "bharat@oksbi",
-      casualLeaves: 8,
-      sickLeaves: 6.5,
-    },
-    {
-      id: "3",
-      code: "EMP002",
-      name: "Priya Sharma",
-      email: "priya@crm.com",
-      department: "Sales",
-      designation: "Senior Sales Lead",
-      type: "Full Time",
-      status: "Active",
-      joined: "Jan 15, 2025",
-      phone: "9876501234",
-      initialPassword: "Emp@2026",
-      baseSalary: 32000,
-      bankAccount: "998877665544",
-      bankIfsc: "HDFC0001234",
-      upiId: "priya@okhdfc",
-      casualLeaves: 10,
-      sickLeaves: 8,
-    },
   ],
   advances: [],
   ledger: [],
@@ -286,18 +248,15 @@ export const cleanBaselineStore: CRMStoreData = {
   complaints: [],
 };
 
-export const STORAGE_KEY = "wcrm_unified_store_v3";
+export const STORAGE_KEY = "wcrm_unified_store_v4";
 
 export const getCRMStore = (): CRMStoreData => {
   if (typeof window === "undefined") return cleanBaselineStore;
   try {
-    // Purge deprecated v1 and v2 test caches
-    if (localStorage.getItem("wcrm_unified_store_v2") || localStorage.getItem("wcrm_unified_store_v1")) {
-      localStorage.removeItem("wcrm_unified_store_v2");
-      localStorage.removeItem("wcrm_unified_store_v1");
-      localStorage.removeItem("wcrm_store_version");
-      localStorage.removeItem("wcrm_store_updated_at");
-    }
+    // Purge deprecated v1, v2 and v3 test caches
+    ["wcrm_unified_store_v1", "wcrm_unified_store_v2", "wcrm_unified_store_v3", "wcrm_store_version", "wcrm_store_version_v3", "wcrm_store_updated_at", "wcrm_store_updated_at_v3"].forEach((k) => {
+      if (localStorage.getItem(k)) localStorage.removeItem(k);
+    });
 
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {

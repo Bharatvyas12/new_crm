@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { getCRMStore } from "@/lib/store";
+import { pullStoreFromCloud } from "@/lib/syncEngine";
 import { Lock, ArrowRight, ShieldCheck, AlertTriangle, UserCheck, KeyRound } from "lucide-react";
 
 export default function LoginPage() {
@@ -18,10 +19,19 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    pullStoreFromCloud(true);
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage(null);
+
+    // Pull latest employees from cloud before verifying
+    try {
+      await pullStoreFromCloud(true);
+    } catch {}
 
     const inputId = identifier.trim().toLowerCase();
     const inputPass = password.trim();

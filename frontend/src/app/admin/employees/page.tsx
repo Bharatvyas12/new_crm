@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Plus,
   Search,
@@ -24,29 +24,14 @@ import {
   UserCheck,
   UserX,
   Lock,
+  Sparkles,
 } from "lucide-react";
-
-export interface EmployeeItem {
-  id: string;
-  code: string;
-  name: string;
-  email: string;
-  department: string;
-  designation: string;
-  type: string;
-  status: "Active" | "Inactive";
-  joined: string;
-  phone: string;
-  initialPassword?: string;
-  baseSalary?: number;
-  bankAccount?: string;
-  bankIfsc?: string;
-  upiId?: string;
-  emergencyContact?: string;
-  address?: string;
-  casualLeaves?: number;
-  sickLeaves?: number;
-}
+import {
+  getCRMStore,
+  saveCRMStore,
+  subscribeToCRMStore,
+  EmployeeItem,
+} from "@/lib/store";
 
 export const DEPARTMENTS = [
   "Sales",
@@ -60,163 +45,22 @@ export const DEPARTMENTS = [
   "Quality",
 ];
 
-const initialEmployees: EmployeeItem[] = [
-  {
-    id: "1",
-    code: "ADMIN001",
-    name: "System Administrator",
-    email: "admin@crm.com",
-    department: "Management",
-    designation: "Administrator",
-    type: "Full Time",
-    status: "Active",
-    joined: "Oct 02, 2026",
-    phone: "9999999999",
-    initialPassword: "admin123",
-    baseSalary: 75000,
-    bankAccount: "987654321098",
-    bankIfsc: "HDFC0001234",
-    upiId: "admin@okhdfc",
-    emergencyContact: "9876500000",
-    address: "Central Head Office, Suite 401",
-    casualLeaves: 12,
-    sickLeaves: 8,
-  },
-  {
-    id: "2",
-    code: "E001",
-    name: "Bharat vyas",
-    email: "bharat1@crm.com",
-    department: "Operations",
-    designation: "Supervisor",
-    type: "Full Time",
-    status: "Active",
-    joined: "Oct 01, 2026",
-    phone: "08005567626",
-    initialPassword: "Emp@2026",
-    baseSalary: 35000,
-    bankAccount: "112233445566",
-    bankIfsc: "SBIN0004321",
-    upiId: "bharat@oksbi",
-    emergencyContact: "9829011122",
-    address: "42 Subhash Nagar, Ring Road",
-    casualLeaves: 8,
-    sickLeaves: 6.5,
-  },
-  {
-    id: "3",
-    code: "E009",
-    name: "Bharat vyas",
-    email: "bharat2@crm.com",
-    department: "Warehouse",
-    designation: "Inventory Lead",
-    type: "Full Time",
-    status: "Active",
-    joined: "Oct 01, 2026",
-    phone: "8005567626",
-    initialPassword: "Emp@2026",
-    baseSalary: 32000,
-    bankAccount: "334455667788",
-    bankIfsc: "ICIC0002233",
-    upiId: "bharat.lead@okaxis",
-    emergencyContact: "9414022233",
-    address: "Warehouse Block C, Sector 5",
-    casualLeaves: 10,
-    sickLeaves: 7,
-  },
-  {
-    id: "4",
-    code: "EMP001",
-    name: "Demo Employee",
-    email: "demo@crm.com",
-    department: "Delivery",
-    designation: "Rider",
-    type: "Full Time",
-    status: "Active",
-    joined: "Jan 01, 2025",
-    phone: "+1234567890",
-    initialPassword: "Emp@2026",
-    baseSalary: 25000,
-    bankAccount: "556677889900",
-    bankIfsc: "PUNB0005566",
-    upiId: "demo@okicici",
-    emergencyContact: "9828033344",
-    address: "Station Road, Old City",
-    casualLeaves: 6,
-    sickLeaves: 5,
-  },
-  {
-    id: "5",
-    code: "EMP2D355D",
-    name: "Smoke Racer",
-    email: "smoke1@crm.com",
-    department: "Packaging",
-    designation: "Packer",
-    type: "Full Time",
-    status: "Active",
-    joined: "Jan 01, 2025",
-    phone: "9876543210",
-    initialPassword: "Emp@2026",
-    baseSalary: 22000,
-    casualLeaves: 9,
-    sickLeaves: 7,
-  },
-  {
-    id: "6",
-    code: "EMP512AB5",
-    name: "Rahul Sharma",
-    email: "rahul.sales@crm.com",
-    department: "Sales",
-    designation: "Sales Executive",
-    type: "Full Time",
-    status: "Active",
-    joined: "Feb 15, 2025",
-    phone: "9876543211",
-    initialPassword: "Emp@2026",
-    baseSalary: 28000,
-    casualLeaves: 11,
-    sickLeaves: 8,
-  },
-  {
-    id: "7",
-    code: "EMPB8769B",
-    name: "Suresh Jain",
-    email: "suresh.acc@crm.com",
-    department: "Accounts",
-    designation: "Senior Accountant",
-    type: "Full Time",
-    status: "Active",
-    joined: "Mar 01, 2025",
-    phone: "9876543212",
-    initialPassword: "Emp@2026",
-    baseSalary: 42000,
-    casualLeaves: 10,
-    sickLeaves: 8,
-  },
-  {
-    id: "8",
-    code: "EMPD3F7CE",
-    name: "Karan Verma",
-    email: "karan.logistics@crm.com",
-    department: "Logistics",
-    designation: "Driver / Dispatcher",
-    type: "Full Time",
-    status: "Active",
-    joined: "Apr 10, 2025",
-    phone: "9876543213",
-    initialPassword: "Emp@2026",
-    baseSalary: 26000,
-    casualLeaves: 8,
-    sickLeaves: 6,
-  },
-];
-
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<EmployeeItem[]>(initialEmployees);
+  const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("Any");
   const [deptFilter, setDeptFilter] = useState("All");
   const [searchFilter, setSearchFilter] = useState("");
 
+  const loadEmployees = () => {
+    const store = getCRMStore();
+    setEmployees(store.employees || []);
+  };
+
+  useEffect(() => {
+    loadEmployees();
+    const unsubscribe = subscribeToCRMStore(loadEmployees);
+    return () => unsubscribe();
+  }, []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeItem | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -226,9 +70,10 @@ export default function EmployeesPage() {
   // Form State for Add Employee with Password Setup
   const [newEmployee, setNewEmployee] = useState({
     name: "",
+    code: "",
     email: "",
     phone: "",
-    department: "Sales",
+    department: "Operations",
     designation: "",
     type: "Full Time",
     initialPassword: "Emp@2026",
@@ -256,35 +101,40 @@ export default function EmployeesPage() {
       return;
     }
 
-    const generatedCode = `EMP${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const assignedCode = newEmployee.code.trim().toUpperCase() || `EMP${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const item: EmployeeItem = {
       id: String(Date.now()),
-      code: generatedCode,
-      name: newEmployee.name,
-      email: newEmployee.email,
+      code: assignedCode,
+      name: newEmployee.name.trim(),
+      email: newEmployee.email.trim(),
       department: newEmployee.department,
-      designation: newEmployee.designation || "Staff",
+      designation: newEmployee.designation.trim() || "Staff",
       type: newEmployee.type,
       status: "Active",
       joined: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      phone: newEmployee.phone || "—",
-      initialPassword: newEmployee.initialPassword || "Emp@2026",
+      phone: newEmployee.phone.trim() || "—",
+      initialPassword: newEmployee.initialPassword.trim() || "Emp@2026",
       baseSalary: Number(newEmployee.baseSalary) || 0,
-      bankAccount: newEmployee.bankAccount,
-      bankIfsc: newEmployee.bankIfsc,
-      upiId: newEmployee.upiId,
+      bankAccount: newEmployee.bankAccount.trim(),
+      bankIfsc: newEmployee.bankIfsc.trim(),
+      upiId: newEmployee.upiId.trim(),
       casualLeaves: 12,
       sickLeaves: 8,
     };
 
-    setEmployees([item, ...employees]);
+    const store = getCRMStore();
+    const updatedEmployees = [item, ...(store.employees || []).filter((e) => e.code !== item.code)];
+    store.employees = updatedEmployees;
+    saveCRMStore(store);
+    setEmployees(updatedEmployees);
     setShowAddModal(false);
-    showToast(`Employee "${item.name}" (${item.code}) added! Initial Password: "${item.initialPassword}"`);
+    showToast(`✓ Employee "${item.name}" (${item.code}) registered & synced to cloud! Password: "${item.initialPassword}"`);
     setNewEmployee({
       name: "",
+      code: "",
       email: "",
       phone: "",
-      department: "Sales",
+      department: "Operations",
       designation: "",
       type: "Full Time",
       initialPassword: "Emp@2026",
@@ -293,6 +143,34 @@ export default function EmployeesPage() {
       bankIfsc: "",
       upiId: "",
     });
+  };
+
+  const handleQuickAddBharatVyas = () => {
+    const item: EmployeeItem = {
+      id: "2",
+      code: "E001",
+      name: "Bharat vyas",
+      email: "bharat1@crm.com",
+      department: "Operations",
+      designation: "Supervisor",
+      type: "Full Time",
+      status: "Active",
+      joined: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+      phone: "08005567626",
+      initialPassword: "Emp@2026",
+      baseSalary: 35000,
+      bankAccount: "112233445566",
+      bankIfsc: "SBIN0004321",
+      upiId: "bharat@oksbi",
+      casualLeaves: 12,
+      sickLeaves: 8,
+    };
+    const store = getCRMStore();
+    const updatedEmployees = [item, ...(store.employees || []).filter((e) => e.code !== "E001")];
+    store.employees = updatedEmployees;
+    saveCRMStore(store);
+    setEmployees(updatedEmployees);
+    showToast(`✓ Bharat vyas (E001) registered and synced to cloud!`);
   };
 
   const openEmployeeDetails = (emp: EmployeeItem) => {
@@ -310,21 +188,42 @@ export default function EmployeesPage() {
       ...editFormData,
     } as EmployeeItem;
 
-    setEmployees(employees.map((emp) => (emp.id === updated.id ? updated : emp)));
+    const store = getCRMStore();
+    const updatedEmployees = (store.employees || []).map((emp) => (emp.id === updated.id ? updated : emp));
+    store.employees = updatedEmployees;
+    saveCRMStore(store);
+    setEmployees(updatedEmployees);
     setSelectedEmployee(updated);
     setIsEditMode(false);
-    showToast(`Employee profile for ${updated.name} (${updated.code}) updated & saved!`);
+    showToast(`✓ Employee profile for ${updated.name} (${updated.code}) updated & saved to cloud!`);
   };
 
   const toggleEmployeeStatus = (emp: EmployeeItem) => {
     const newStatus = emp.status === "Active" ? "Inactive" : "Active";
     const updated = { ...emp, status: newStatus as "Active" | "Inactive" };
-    setEmployees(employees.map((e) => (e.id === emp.id ? updated : e)));
+    const store = getCRMStore();
+    const updatedEmployees = (store.employees || []).map((e) => (e.id === emp.id ? updated : e));
+    store.employees = updatedEmployees;
+    saveCRMStore(store);
+    setEmployees(updatedEmployees);
     if (selectedEmployee?.id === emp.id) {
       setSelectedEmployee(updated);
       setEditFormData(updated);
     }
     showToast(`Status for ${emp.name} set to ${newStatus}`);
+  };
+
+  const handleDeleteEmployee = (emp: EmployeeItem) => {
+    if (!confirm(`Are you sure you want to remove employee "${emp.name}" (${emp.code})? This will delete the account from the cloud.`)) return;
+    const store = getCRMStore();
+    const updatedEmployees = (store.employees || []).filter((e) => e.id !== emp.id && e.code !== emp.code);
+    store.employees = updatedEmployees;
+    saveCRMStore(store);
+    setEmployees(updatedEmployees);
+    if (selectedEmployee?.id === emp.id) {
+      setSelectedEmployee(null);
+    }
+    showToast(`✓ Employee "${emp.name}" removed from cloud.`);
   };
 
   const filteredEmployees = employees.filter((emp) => {
@@ -366,13 +265,25 @@ export default function EmployeesPage() {
             Manage staff by department, assign initial passwords, modify profiles and track active status.
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
-        >
-          <Plus size={18} />
-          <span>+ Add Employee</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          {!employees.some((e) => e.code === "E001") && (
+            <button
+              onClick={handleQuickAddBharatVyas}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              title="Add supervisor Bharat vyas (E001) for instant phone login"
+            >
+              <Sparkles size={14} />
+              <span>+ Add Bharat Vyas (E001)</span>
+            </button>
+          )}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            <Plus size={18} />
+            <span>+ Add Employee</span>
+          </button>
+        </div>
       </div>
 
       {/* Department Quick Filter Tabs */}
@@ -564,6 +475,13 @@ export default function EmployeesPage() {
                           <UserCheck className="w-4 h-4" />
                         )}
                       </button>
+                      <button
+                        onClick={() => handleDeleteEmployee(emp)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title="Delete Employee"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -602,6 +520,20 @@ export default function EmployeesPage() {
 
             <form onSubmit={handleAddEmployee} className="space-y-4 pt-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Employee Code */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Employee Code <span className="text-slate-400 font-normal">(e.g. E001 or leave blank)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. E001"
+                    value={newEmployee.code}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, code: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono uppercase font-semibold"
+                  />
+                </div>
+
                 {/* Full Name */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">

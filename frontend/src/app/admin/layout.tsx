@@ -29,6 +29,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Globe,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
@@ -425,13 +426,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             >
               <Menu size={20} />
             </button>
-            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>{t("syncLive", "Cloud Live Synced")}</span>
+              <span className="hidden sm:inline">{t("syncLive", "Cloud Live Synced")}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={async () => {
+                const { forceSyncNow } = await import("@/lib/syncEngine");
+                await forceSyncNow();
+              }}
+              className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] border border-blue-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Force Immediate Cloud Sync"
+            >
+              <RefreshCw size={13} className="text-[#1a73e8]" />
+              <span className="hidden sm:inline">Sync Cloud</span>
+            </button>
             <button
               type="button"
               onClick={handleLockPortal}

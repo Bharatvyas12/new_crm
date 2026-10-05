@@ -3,20 +3,20 @@
 // Unified High-Speed Cross-Device Real-Time Cloud Synchronization Engine
 import { CRMStoreData, STORAGE_KEY } from "./store";
 
-const VERSION_KEY = "wcrm_store_version_v3";
-const UPDATED_AT_KEY = "wcrm_store_updated_at_v3";
+const VERSION_KEY = "wcrm_store_version_v4";
+const UPDATED_AT_KEY = "wcrm_store_updated_at_v4";
 let isSyncing = false;
 let syncInitialized = false;
 let pollingTimer: NodeJS.Timeout | null = null;
 let lastKnownUpdatedAt = "";
+let isCloudOnline = true;
 
 export const getApiBaseUrl = (): string => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
-  }
-  // Connect both localhost and production clients to the Render Cloud Backend
+  // Always connect all devices (phones, laptops, Vercel, localhost) directly to the unified Render Cloud Backend
   return "https://new-crm-c339.onrender.com/api/v1";
 };
+
+export const getCloudOnlineStatus = () => isCloudOnline;
 
 export const getLocalStoreVersion = (): number => {
   if (typeof window === "undefined") return 0;
@@ -82,7 +82,7 @@ export const pushStoreToCloud = async (
     const currentVersion = getLocalStoreVersion();
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
 
     const response = await fetch(`${baseUrl}/sync/store?_t=${Date.now()}`, {
       method: "POST",
@@ -102,6 +102,7 @@ export const pushStoreToCloud = async (
     clearTimeout(timeout);
 
     if (response.ok) {
+      isCloudOnline = true;
       const result = await response.json();
       if (result.version) {
         setLocalStoreVersion(result.version);
@@ -137,7 +138,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
       // Fast version check
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
+        const timeout = setTimeout(() => controller.abort(), 8000);
 
         const verRes = await fetch(`${baseUrl}/sync/version?_t=${Date.now()}`, {
           cache: "no-store",
@@ -147,6 +148,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         clearTimeout(timeout);
 
         if (verRes.ok) {
+          isCloudOnline = true;
           const verData = await verRes.json();
           // If server version AND updated_at matches local, skip downloading full store
           if (verData.version === localVersion && verData.updated_at === localUpdatedAt) {
@@ -160,7 +162,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
 
     const response = await fetch(`${baseUrl}/sync/store?_t=${Date.now()}`, {
       cache: "no-store",
@@ -170,6 +172,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     clearTimeout(timeout);
 
     if (response.ok) {
+      isCloudOnline = true;
       const payload = await response.json();
       if (payload.data && typeof payload.data === "object") {
         const prevRaw = localStorage.getItem(STORAGE_KEY);

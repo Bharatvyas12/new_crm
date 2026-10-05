@@ -26,6 +26,7 @@ import {
   Sparkles,
   Phone,
   Mail,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
@@ -295,15 +296,27 @@ export default function EmployeeHomePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={async () => {
+              const { forceSyncNow } = await import("@/lib/syncEngine");
+              await forceSyncNow();
+              showToast("✓ Live Cloud Synced!");
+            }}
+            className="p-2 sm:px-2.5 sm:py-1.5 bg-blue-50 border border-blue-200 text-[#1a73e8] rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1"
+            title="Sync with cloud"
+          >
+            <RefreshCw size={13} className="text-[#1a73e8]" />
+            <span className="hidden sm:inline">Sync</span>
+          </button>
           <NotificationCenter isEmployee={true} />
           <LanguageSwitcher />
           <button
             onClick={() => setShowProfileModal(true)}
-            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+            className="px-2.5 sm:px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
           >
             <User size={14} className="text-blue-600" />
-            <span>{lang === "hi" ? "प्रोफ़ाइल" : "Profile"}</span>
+            <span className="hidden sm:inline">{lang === "hi" ? "प्रोफ़ाइल" : "Profile"}</span>
           </button>
         </div>
       </div>

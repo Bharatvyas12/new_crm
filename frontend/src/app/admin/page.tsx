@@ -65,8 +65,11 @@ export default function AdminDashboardPage() {
 
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 
+  // Working staff members (excluding System Administrator)
+  const staffMembers = employees.filter((emp) => !emp.code.includes("ADMIN") && emp.department !== "Management");
+
   // Present employees: either in activeShifts (ACTIVE or ON_BREAK) or attendance today with status Present
-  const presentEmployees = employees.filter((emp) => {
+  const presentEmployees = staffMembers.filter((emp) => {
     const shift = activeShifts[emp.code];
     if (shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) return true;
     const att = attendance.find((a) => a.employeeCode === emp.code && a.date === today);
@@ -96,7 +99,7 @@ export default function AdminDashboardPage() {
   });
 
   // Absent employees: registered active staff who have neither active shift nor attendance record today
-  const absentEmployees = employees.filter((emp) => {
+  const absentEmployees = staffMembers.filter((emp) => {
     const shift = activeShifts[emp.code];
     if (shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK" || shift.shiftState === "COMPLETED")) return false;
     const att = attendance.find((a) => a.employeeCode === emp.code && a.date === today);
