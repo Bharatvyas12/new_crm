@@ -422,7 +422,29 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="flex justify-end pt-2">
+        <div className="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            onClick={async () => {
+              if (confirm("Are you sure you want to reset all CRM test data (tasks, orders, advances, shifts) to clean empty state across cloud and local devices?")) {
+                try {
+                  const res = await fetch("https://new-crm-c339.onrender.com/api/v1/sync/reset", { method: "POST" });
+                  if (res.ok) {
+                    resetCRMStoreToClean();
+                    showToast("✓ Cloud and local database reset to clean state successfully!");
+                    setTimeout(() => window.location.reload(), 800);
+                  }
+                } catch {
+                  resetCRMStoreToClean();
+                  showToast("✓ Local database reset to clean state!");
+                }
+              }
+            }}
+            className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-2xl text-xs font-bold transition-colors cursor-pointer"
+          >
+            🗑️ Reset All Data to Clean Blank State
+          </button>
+
           <button
             type="submit"
             className="flex items-center gap-2 px-6 py-3 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-2xl text-xs font-bold shadow-xs transition-colors cursor-pointer"

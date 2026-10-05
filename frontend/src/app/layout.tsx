@@ -3,6 +3,7 @@ import { QueryProvider } from "@/lib/providers/query-provider";
 import { AuthProvider } from "@/lib/providers/auth-provider";
 import { LanguageProvider } from "@/lib/i18n";
 import { CloudSyncInitializer } from "@/components/CloudSyncInitializer";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({
           <AuthProvider>
             <LanguageProvider>
               <CloudSyncInitializer />
+              <PWAInstallPrompt />
               {children}
             </LanguageProvider>
           </AuthProvider>
