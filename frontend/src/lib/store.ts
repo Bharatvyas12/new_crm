@@ -286,11 +286,19 @@ export const cleanBaselineStore: CRMStoreData = {
   complaints: [],
 };
 
-const STORAGE_KEY = "wcrm_unified_store_v2";
+export const STORAGE_KEY = "wcrm_unified_store_v3";
 
 export const getCRMStore = (): CRMStoreData => {
   if (typeof window === "undefined") return cleanBaselineStore;
   try {
+    // Purge deprecated v1 and v2 test caches
+    if (localStorage.getItem("wcrm_unified_store_v2") || localStorage.getItem("wcrm_unified_store_v1")) {
+      localStorage.removeItem("wcrm_unified_store_v2");
+      localStorage.removeItem("wcrm_unified_store_v1");
+      localStorage.removeItem("wcrm_store_version");
+      localStorage.removeItem("wcrm_store_updated_at");
+    }
+
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanBaselineStore));

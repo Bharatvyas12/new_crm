@@ -40,6 +40,9 @@ export default function LoginPage() {
     const isAdminDefault = inputId === "admin@crm.com" && inputPass === "admin123";
 
     if (isAdminDefault || (matched && (matched.code.includes("ADMIN") || matched.department === "Management") && (matched.initialPassword === inputPass || inputPass === "admin123"))) {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("wcrm_admin_unlocked", "true");
+      }
       const adminUser = matched || {
         id: "1",
         code: "ADMIN001",

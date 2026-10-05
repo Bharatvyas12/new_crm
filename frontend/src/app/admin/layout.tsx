@@ -123,11 +123,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { t, lang } = useLanguage();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Admin Auth Form State
+  // Admin Auth & Session Lock State
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const unlocked = sessionStorage.getItem("wcrm_admin_unlocked") === "true";
+      setIsAdminUnlocked(unlocked);
+    }
+  }, []);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,6 +155,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       (emailTrim === "admin@crm.com" && passTrim === "admin123") ||
       (adminEmp && (adminEmp.code.includes("ADMIN") || adminEmp.department === "Management"))
     ) {
+      sessionStorage.setItem("wcrm_admin_unlocked", "true");
+      setIsAdminUnlocked(true);
       login({
         id: adminEmp?.id || "1",
         email: adminEmp?.email || "admin@crm.com",
@@ -158,12 +168,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setIsSubmitting(false);
     } else {
       setIsSubmitting(false);
-      setAuthError(t("invalidAdminCredentials", "Invalid admin email or password. Default is admin@crm.com / admin123"));
+      setAuthError(
+        lang === "hi"
+          ? "अमान्य एडमिन ईमेल या पासवर्ड। डिफ़ॉल्ट: admin@crm.com / admin123"
+          : "Invalid admin email or password. Default is admin@crm.com / admin123"
+      );
     }
   };
 
+  const handleLockPortal = () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("wcrm_admin_unlocked");
+    }
+    setIsAdminUnlocked(false);
+    logout();
+  };
+
   const handleLogout = async () => {
-    await logout();
+    handleLockPortal();
   };
 
   // 1. Loading State
@@ -175,16 +197,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // 2. Strict Admin Auth Guard: If not logged in as Admin, prompt for credentials
-  if (!user || user.role !== "ADMIN") {
+  // 2. Strict Admin Auth Guard: If not unlocked in current session, prompt for credentials
+  if (!isAdminUnlocked || !user || user.role !== "ADMIN") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-slate-100 flex items-center justify-center p-4 relative overflow-hidden font-sans">
         {/* Background glow */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
 
         <div className="w-full max-w-md relative z-10 space-y-6">
           {/* Language Switcher in Login */}
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Admin Security Gate</span>
+            </div>
             <LanguageSwitcher className="bg-slate-800/80 border-slate-700" />
           </div>
 
@@ -194,9 +220,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Lock size={26} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white">{t("adminLoginTitle", "Workforce CRM — Admin Security")}</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-white">
+                  {lang === "hi" ? "एडमिन सुरक्षा सत्यापन" : "Admin Security Verification"}
+                </h1>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                  {t("adminLoginDesc", "Please enter administrator credentials to access the management portal.")}
+                  {lang === "hi"
+                    ? "एडमिन पैनल में प्रवेश करने हेतु अपनी ऑथेंटिकेशन आईडी व पासवर्ड दर्ज करें।"
+                    : "Please enter administrator credentials to access the management portal."}
                 </p>
               </div>
             </div>
@@ -211,7 +241,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {t("emailAddress", "Email Address")} / ID
+                  {lang === "hi" ? "एडमिन ईमेल आईडी / कोड" : "Admin Email Address / Code"}
                 </label>
                 <input
                   type="text"
@@ -226,9 +256,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-semibold text-slate-300">
-                    {t("password", "Password")}
+                    {lang === "hi" ? "पासवर्ड" : "Password"}
                   </label>
-                  <span className="text-[10px] text-slate-500 font-mono">Default: admin123</span>
+                  <span className="text-[10px] text-slate-500 font-mono">admin123</span>
                 </div>
                 <input
                   type="password"
@@ -243,20 +273,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
               >
-                <span>{isSubmitting ? "Verifying..." : t("loginButton", "Authenticate & Open Admin")}</span>
+                <span>{isSubmitting ? "Verifying..." : lang === "hi" ? "सत्यापित करें व एडमिन खोलें" : "Authenticate & Open Admin"}</span>
                 <ArrowRight size={16} />
               </button>
             </form>
 
             <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
               <Link href="/app" className="hover:text-blue-400 transition-colors flex items-center gap-1">
-                ← {t("employeePortal", "Employee Portal")}
+                ← {lang === "hi" ? "कर्मचारी पोर्टल" : "Employee Portal"}
               </Link>
               <div className="flex items-center gap-1.5 text-emerald-400 font-medium text-[11px]">
                 <ShieldCheck size={14} />
-                <span>{t("syncLive", "Cloud Live Synced")}</span>
+                <span>{lang === "hi" ? "सुरक्षा सक्रिय" : "Security Active"}</span>
               </div>
             </div>
           </div>
@@ -401,7 +431,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={handleLockPortal}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Lock Admin Portal"
+            >
+              <Lock size={14} className="text-red-600" />
+              <span className="hidden sm:inline">{lang === "hi" ? "लॉक पोर्टल" : "Lock Portal"}</span>
+            </button>
             <NotificationCenter isEmployee={false} />
             <LanguageSwitcher />
           </div>

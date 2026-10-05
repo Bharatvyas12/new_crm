@@ -1,10 +1,10 @@
 "use client";
 
 // Unified High-Speed Cross-Device Real-Time Cloud Synchronization Engine
-import { CRMStoreData } from "./store";
+import { CRMStoreData, STORAGE_KEY } from "./store";
 
-const VERSION_KEY = "wcrm_store_version";
-const UPDATED_AT_KEY = "wcrm_store_updated_at";
+const VERSION_KEY = "wcrm_store_version_v3";
+const UPDATED_AT_KEY = "wcrm_store_updated_at_v3";
 let isSyncing = false;
 let syncInitialized = false;
 let pollingTimer: NodeJS.Timeout | null = null;
@@ -163,7 +163,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     if (response.ok) {
       const payload = await response.json();
       if (payload.data && typeof payload.data === "object") {
-        const prevRaw = localStorage.getItem("wcrm_unified_store_v2");
+        const prevRaw = localStorage.getItem(STORAGE_KEY);
         const prevStore = prevRaw ? JSON.parse(prevRaw) : null;
 
         setLocalStoreVersion(payload.version || 1);
@@ -173,7 +173,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         }
 
         // Save to local storage
-        localStorage.setItem("wcrm_unified_store_v2", JSON.stringify(payload.data));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload.data));
 
         // Detect if new orders or tasks arrived and play chime
         if (prevStore) {
