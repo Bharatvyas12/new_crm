@@ -27,6 +27,8 @@ import {
   Phone,
   Mail,
   RefreshCw,
+  Smartphone,
+  Download,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
@@ -308,6 +310,19 @@ export default function EmployeeHomePage() {
           >
             <RefreshCw size={13} className="text-[#1a73e8]" />
             <span className="hidden sm:inline">Sync</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("open-pwa-install-modal"));
+              }
+            }}
+            className="p-2 sm:px-2.5 sm:py-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+            title="Add to Home Screen / Install on Phone"
+          >
+            <Smartphone size={13} className="text-emerald-600" />
+            <span className="hidden xs:inline sm:inline">{lang === "hi" ? "ऐप जोड़ें" : "Install"}</span>
           </button>
           <NotificationCenter isEmployee={true} />
           <LanguageSwitcher />
@@ -841,6 +856,36 @@ export default function EmployeeHomePage() {
                     Logged in with employee credentials. Click change password to set your personal password.
                   </p>
                 )}
+              </div>
+
+              {/* Install PWA Prompt inside profile modal */}
+              <div className="p-3.5 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Smartphone size={16} />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-900">
+                      {lang === "hi" ? "फोन की होम स्क्रीन पर जोड़ें" : "Add App to Phone Home Screen"}
+                    </h5>
+                    <p className="text-[10px] text-slate-500">
+                      {lang === "hi" ? "फुल स्क्रीन ऐप और तेज परफॉरमेंस के लिए" : "Full-screen native-like app experience"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileModal(false);
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(new CustomEvent("open-pwa-install-modal"));
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer shrink-0 shadow-xs active:scale-95"
+                >
+                  <Download size={12} />
+                  <span>{lang === "hi" ? "जोड़ें" : "Install"}</span>
+                </button>
               </div>
             </div>
 

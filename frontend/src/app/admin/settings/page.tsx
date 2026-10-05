@@ -28,7 +28,7 @@ export default function SettingsPage() {
     address: "Plot 42, Wholesale Trade Center, Ring Road",
     latitude: 26.9124,
     longitude: 75.7873,
-    geofenceRadiusM: 200,
+    geofenceRadiusM: 40,
     shiftStart: "09:00",
     shiftEnd: "19:00",
     requiredDailyHours: 10,
@@ -338,14 +338,14 @@ export default function SettingsPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700">Geofence Radius (Meters)</label>
                 <select
-                  value={settings.geofenceRadiusM}
+                  value={[25, 40, 60, 100].includes(settings.geofenceRadiusM) ? settings.geofenceRadiusM : 40}
                   onChange={(e) => setSettings({ ...settings, geofenceRadiusM: Number(e.target.value) })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:bg-white"
                 >
-                  <option value={100}>100 Meters (Strict shop boundary)</option>
-                  <option value={200}>200 Meters (Recommended default)</option>
-                  <option value={350}>350 Meters (Large warehouse/plot)</option>
-                  <option value={500}>500 Meters (Industrial complex)</option>
+                  <option value={25}>25 Meters (Immediate shop floor / Counter)</option>
+                  <option value={40}>40 Meters (Inside premises — Recommended)</option>
+                  <option value={60}>60 Meters (Shop & immediate perimeter)</option>
+                  <option value={100}>100 Meters (Maximum allowed limit)</option>
                 </select>
               </div>
             </div>

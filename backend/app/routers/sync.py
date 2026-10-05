@@ -28,7 +28,7 @@ def _get_initial_clean_store() -> Dict[str, Any]:
             "address": "Plot 42, Wholesale Trade Center, Ring Road",
             "latitude": 26.9124,
             "longitude": 75.7873,
-            "geofenceRadiusM": 200,
+            "geofenceRadiusM": 40,
             "shiftStart": "09:00",
             "shiftEnd": "19:00",
             "requiredDailyHours": 10,

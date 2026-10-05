@@ -1,13 +1,21 @@
 {
-  "name": "Workforce CRM",
-  "short_name": "Workforce",
-  "description": "Enterprise Field Operations, Attendance & Dispatch Control",
+  "name": "Workforce CRM — Vyas Enterprises",
+  "short_name": "Workforce CRM",
+  "description": "Enterprise Field Operations, Attendance, Dispatch & Payroll Control",
   "start_url": "/app",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0f172a",
-  "theme_color": "#1a73e8",
+  "theme_color": "#1e293b",
+  "categories": ["business", "productivity"],
   "icons": [
+    {
+      "src": "/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
@@ -19,6 +27,12 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
