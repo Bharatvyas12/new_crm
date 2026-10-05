@@ -2,6 +2,7 @@
 
 // Unified High-Speed Cross-Device Real-Time Cloud Synchronization Engine
 import { CRMStoreData, STORAGE_KEY } from "./store";
+import { sendSystemPhoneNotification, playNotificationTune } from "./phoneNotifications";
 
 const VERSION_KEY = "wcrm_store_version_v4";
 const UPDATED_AT_KEY = "wcrm_store_updated_at_v4";
@@ -187,12 +188,27 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         // Save to local storage
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload.data));
 
-        // Detect if new orders or tasks arrived and play chime
+        // Detect if new orders or tasks arrived and trigger system notification with tune
         if (prevStore) {
-          const newOrders = (payload.data.orders || []).length > (prevStore.orders || []).length;
-          const newTasks = (payload.data.tasks || []).length > (prevStore.tasks || []).length;
-          if (newOrders || newTasks) {
-            playLiveSoundNotification();
+          const currentOrders = payload.data.orders || [];
+          const prevOrders = prevStore.orders || [];
+          const currentTasks = payload.data.tasks || [];
+          const prevTasks = prevStore.tasks || [];
+
+          if (currentOrders.length > prevOrders.length) {
+            const diff = currentOrders.length - prevOrders.length;
+            sendSystemPhoneNotification(
+              "📦 New Order in Pool!",
+              `🚨 ${diff} new order(s) available for pickup & dispatch! Tap to claim.`,
+              "/app/orders"
+            );
+          } else if (currentTasks.length > prevTasks.length) {
+            const diff = currentTasks.length - prevTasks.length;
+            sendSystemPhoneNotification(
+              "📋 New Task Assigned!",
+              `⏰ ${diff} new task(s) assigned to you. Tap to review.`,
+              "/app/tasks"
+            );
           }
         }
 

@@ -1,5 +1,5 @@
-// Workforce CRM Service Worker for PWA Offline & Quick App Launch
-const CACHE_NAME = "wcrm-pwa-v1";
+// Workforce CRM Service Worker for PWA Offline, Quick Launch & System Push Notifications
+const CACHE_NAME = "wcrm-pwa-v2";
 const STATIC_ASSETS = [
   "/",
   "/app",
@@ -41,7 +41,6 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache valid responses
         if (response && response.status === 200 && response.type === "basic") {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -55,5 +54,24 @@ self.addEventListener("fetch", (event) => {
           return cachedResponse || caches.match("/");
         });
       })
+  );
+});
+
+// Handle phone notification clicks: Open or focus CRM app window
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || "/app";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url && client.url.includes(urlToOpen) && "focus" in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
   );
 });

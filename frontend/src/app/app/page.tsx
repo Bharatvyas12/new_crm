@@ -893,7 +893,7 @@ export default function EmployeeHomePage() {
               <button
                 onClick={async () => {
                   await logout();
-                  window.location.href = "/login";
+                  window.location.href = "/";
                 }}
                 className="flex items-center gap-1.5 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >

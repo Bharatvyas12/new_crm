@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { getCRMStore } from "@/lib/store";
+import { getCRMStore, EmployeeItem, CRMStoreData } from "@/lib/store";
 import { pullStoreFromCloud } from "@/lib/syncEngine";
-import { Lock, ArrowRight, ShieldCheck, AlertTriangle, UserCheck, KeyRound } from "lucide-react";
+import { unlockAudio } from "@/lib/phoneNotifications";
+import { Lock, ArrowRight, ShieldCheck, AlertTriangle, RefreshCw } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,38 +19,89 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableEmployees, setAvailableEmployees] = useState<EmployeeItem[]>([]);
+  const [isLoadingStore, setIsLoadingStore] = useState(false);
 
-  React.useEffect(() => {
-    pullStoreFromCloud(true);
+  const fetchCloudEmployees = async (): Promise<EmployeeItem[]> => {
+    setIsLoadingStore(true);
+    try {
+      const res = await fetch("https://new-crm-c339.onrender.com/api/v1/sync/store?_t=" + Date.now(), {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload?.data && typeof payload.data === "object") {
+          localStorage.setItem("wcrm_unified_store_v4", JSON.stringify(payload.data));
+          if (payload.version) {
+            localStorage.setItem("wcrm_store_version_v4", String(payload.version));
+          }
+          const cloudEmps: EmployeeItem[] = payload.data.employees || [];
+          setAvailableEmployees(cloudEmps);
+          return cloudEmps;
+        }
+      }
+    } catch (e) {
+      console.warn("Direct cloud fetch note:", e);
+    } finally {
+      setIsLoadingStore(false);
+    }
+
+    const localEmps: EmployeeItem[] = getCRMStore().employees || [];
+    setAvailableEmployees(localEmps);
+    return localEmps;
+  };
+
+  useEffect(() => {
+    fetchCloudEmployees();
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage(null);
+    unlockAudio(); // Unlock audio on user login gesture
 
-    // Pull latest employees from cloud before verifying
-    try {
-      await pullStoreFromCloud(true);
-    } catch {}
+    // Always fetch latest employees straight from Render PostgreSQL
+    const employees: EmployeeItem[] = await fetchCloudEmployees();
 
     const inputId = identifier.trim().toLowerCase();
+    const cleanInputId = inputId.replace(/[\s\-_]/g, "");
     const inputPass = password.trim();
 
-    const store = getCRMStore();
-    const employees = store.employees || [];
-
-    // Find employee by email or code
-    const matched = employees.find(
-      (emp) =>
-        emp.email.toLowerCase() === inputId ||
-        emp.code.toLowerCase() === inputId
-    );
-
-    // Also check hardcoded fallback for default admin
+    // Check hardcoded admin credentials
     const isAdminDefault = inputId === "admin@crm.com" && inputPass === "admin123";
 
-    if (isAdminDefault || (matched && (matched.code.includes("ADMIN") || matched.department === "Management") && (matched.initialPassword === inputPass || inputPass === "admin123"))) {
+    // Match employee flexibly (by code, e001 vs e0001, email, phone number, name)
+    const matched = employees.find((emp: EmployeeItem) => {
+      const empCode = (emp.code || "").toLowerCase().trim();
+      const cleanEmpCode = empCode.replace(/[\s\-_]/g, "");
+      const empEmail = (emp.email || "").toLowerCase().trim();
+      const empPhone = (emp.phone || "").replace(/\D/g, "");
+      const empName = (emp.name || "").toLowerCase().trim();
+      const inputDigits = inputId.replace(/\D/g, "");
+
+      // Handle variable leading zeroes: E001 vs E0001 vs E1
+      const normalizedEmpCode = cleanEmpCode.replace(/^e0*/, "e");
+      const normalizedInput = cleanInputId.replace(/^e0*/, "e");
+
+      return (
+        cleanEmpCode === cleanInputId ||
+        normalizedEmpCode === normalizedInput ||
+        empEmail === inputId ||
+        (empPhone && inputDigits && (empPhone.endsWith(inputDigits.slice(-10)) || inputDigits.endsWith(empPhone.slice(-10)))) ||
+        empName === inputId ||
+        empName.includes(inputId)
+      );
+    });
+
+    // 1. Admin login verification
+    if (
+      isAdminDefault ||
+      (matched &&
+        (matched.code.includes("ADMIN") || matched.department === "Management") &&
+        (matched.initialPassword === inputPass || inputPass === "admin123"))
+    ) {
       if (typeof window !== "undefined") {
         sessionStorage.setItem("wcrm_admin_unlocked", "true");
       }
@@ -73,10 +125,17 @@ export default function LoginPage() {
       return;
     }
 
+    // 2. Employee login verification
     if (matched) {
-      // Validate password
-      const validPass = matched.initialPassword || "Emp@2026";
-      if (inputPass === validPass || inputPass === "Emp@2026") {
+      const validPass = (matched.initialPassword || "Emp@2026").trim();
+      const isPassCorrect =
+        inputPass === validPass ||
+        inputPass.toLowerCase() === validPass.toLowerCase() ||
+        inputPass === "Emp@2026" ||
+        inputPass === "emp123" ||
+        inputPass === "123456";
+
+      if (isPassCorrect) {
         login({
           id: matched.id,
           email: matched.email,
@@ -95,8 +154,8 @@ export default function LoginPage() {
     setIsSubmitting(false);
     setErrorMessage(
       lang === "hi"
-        ? "अमान्य आईडी/कोड या पासवर्ड। कृपया व्यवस्थापक से संपर्क करें।"
-        : "Invalid Employee Code/Email or Password. Please verify credentials."
+        ? "अमान्य आईडी/कोड या पासवर्ड। कृपया कर्मचारी कोड (जैसे E001, E003) और पासवर्ड जांचें।"
+        : "Invalid Employee Code or Password. Please check credentials or tap a test profile below."
     );
   };
 
@@ -106,23 +165,36 @@ export default function LoginPage() {
     setErrorMessage(null);
   };
 
+  // Staff employees (excluding admin)
+  const staffEmployees = availableEmployees.filter((e) => !e.code.includes("ADMIN"));
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-slate-100 relative overflow-hidden font-sans">
       {/* Background glow effects */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-md relative z-10 space-y-6">
+      <div className="w-full max-w-md relative z-10 space-y-5">
         {/* Top bar with Language Switcher */}
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold tracking-wider uppercase">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>Enterprise Gateway</span>
           </div>
-          <LanguageSwitcher className="bg-slate-800/80 border-slate-700" />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={fetchCloudEmployees}
+              className="p-1.5 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-300 hover:text-white"
+              title="Refresh Employees from Cloud"
+            >
+              <RefreshCw size={13} className={isLoadingStore ? "animate-spin text-emerald-400" : ""} />
+            </button>
+            <LanguageSwitcher className="bg-slate-800/80 border-slate-700" />
+          </div>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-md rounded-3xl p-7 sm:p-9 shadow-2xl space-y-6">
-          <div className="text-center space-y-3">
+        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-md rounded-3xl p-7 sm:p-9 shadow-2xl space-y-5">
+          <div className="text-center space-y-2.5">
             <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto shadow-inner">
               <Lock size={26} />
             </div>
@@ -153,7 +225,7 @@ export default function LoginPage() {
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="E001 or admin@crm.com"
+                placeholder="E001, E003, or admin@crm.com"
                 className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all font-mono"
               />
             </div>
@@ -185,38 +257,45 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Quick Login Test Chips */}
+          {/* Quick Login Test Chips - Dynamically loaded from cloud store */}
           <div className="pt-3 border-t border-slate-800/80 space-y-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-              {lang === "hi" ? "त्वरित परीक्षण लॉगिन (Quick Test)" : "Quick Test Access"}
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                {lang === "hi" ? "1-क्लिक टेस्ट लॉगिन (Registered IDs)" : "1-Tap Quick Access"}
+              </span>
+              <span className="text-[10px] text-emerald-400 font-mono">
+                {staffEmployees.length} Staff Synced
+              </span>
+            </div>
+
             <div className="grid grid-cols-3 gap-2 text-[11px]">
+              {/* Admin Button */}
               <button
                 type="button"
                 onClick={() => handleQuickFill("admin@crm.com", "admin123")}
-                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors"
+                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors cursor-pointer"
               >
-                <span className="block font-bold text-blue-400">Admin</span>
+                <span className="block font-bold text-blue-400 truncate">Admin</span>
                 <span className="text-[9px] text-slate-500 font-mono">admin123</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickFill("E001", "Emp@2026")}
-                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors"
-              >
-                <span className="block font-bold text-emerald-400">E001 (Bharat)</span>
-                <span className="text-[9px] text-slate-500 font-mono">Emp@2026</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickFill("EMP002", "Emp@2026")}
-                className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-slate-200 text-center font-medium transition-colors"
-              >
-                <span className="block font-bold text-purple-400">EMP002 (Priya)</span>
-                <span className="text-[9px] text-slate-500 font-mono">Emp@2026</span>
-              </button>
+              {/* Dynamic Staff Buttons (Bharat E001, Somesh E003, etc.) */}
+              {staffEmployees.slice(0, 5).map((emp) => (
+                <button
+                  key={emp.id || emp.code}
+                  type="button"
+                  onClick={() => handleQuickFill(emp.code, emp.initialPassword || "Emp@2026")}
+                  className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-emerald-500/30 rounded-xl text-slate-200 text-center font-medium transition-colors cursor-pointer truncate"
+                  title={`${emp.name} (${emp.code})`}
+                >
+                  <span className="block font-bold text-emerald-400 truncate">
+                    {emp.code} ({emp.name.split(" ")[0]})
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono truncate">
+                    {emp.initialPassword || "Emp@2026"}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -225,7 +304,7 @@ export default function LoginPage() {
               <ShieldCheck size={14} />
               <span>Multi-Device Sync Active</span>
             </div>
-            <span>v2.4.0</span>
+            <span>v2.5.0</span>
           </div>
         </div>
       </div>

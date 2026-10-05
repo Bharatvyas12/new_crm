@@ -12,9 +12,16 @@ import {
   MoreVertical,
   HelpCircle,
   ExternalLink,
+  Bell,
+  Volume2,
 } from "lucide-react";
 import { forceSyncNow } from "@/lib/syncEngine";
 import { useLanguage } from "@/lib/i18n";
+import {
+  requestPhoneNotificationPermission,
+  isNotificationPermissionGranted,
+  playNotificationTune,
+} from "@/lib/phoneNotifications";
 
 export function PWAInstallPrompt() {
   const { lang } = useLanguage();
@@ -26,8 +33,12 @@ export function PWAInstallPrompt() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [hasNotificationPermission, setHasNotificationPermission] = useState(true);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      setHasNotificationPermission(isNotificationPermissionGranted());
+    }
     if (typeof window === "undefined") return;
 
     // 1. Register Service Worker for PWA compliance
@@ -124,6 +135,22 @@ export function PWAInstallPrompt() {
     <>
       {/* Floating Controls (Bottom-Right) */}
       <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2">
+        {/* Notification Permission & Audio Ringtone Chip if not yet enabled */}
+        {!hasNotificationPermission && (
+          <button
+            type="button"
+            onClick={async () => {
+              const granted = await requestPhoneNotificationPermission();
+              setHasNotificationPermission(granted);
+            }}
+            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-orange-600 to-red-600 hover:from-amber-400 hover:to-red-500 text-white rounded-2xl shadow-xl border border-amber-300/40 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 animate-pulse"
+            title="Enable Ringtone & Phone Notifications"
+          >
+            <Bell size={14} className="text-white shrink-0 animate-bounce" />
+            <span>{lang === "hi" ? "🔔 रिंगटोन व अलर्ट ऑन करें" : "🔔 Enable Sound Alerts"}</span>
+          </button>
+        )}
+
         {/* Persistent "Add to Home Screen" chip for mobile browser */}
         {!isStandalone && (
           <button
