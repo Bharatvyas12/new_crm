@@ -34,6 +34,7 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationCenter } from "@/components/NotificationCenter";
+import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
 import {
   getCRMStore,
   applyAdvanceInStore,
@@ -350,6 +351,9 @@ export default function EmployeeHomePage() {
           </button>
         </div>
       </div>
+
+      {/* Primary Phone Notification & Ringtone Setup Banner */}
+      <PhoneNotificationBanner userCode={employeeCode} isEmployee={true} />
 
       {/* Live Reminder Banners */}
       {availableOrdersCount > 0 && (

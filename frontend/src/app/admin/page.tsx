@@ -36,6 +36,7 @@ import {
   updateCorrectionStatusInStore,
   CRMStoreData,
 } from "@/lib/store";
+import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
 
 export default function AdminDashboardPage() {
   const [activeModal, setActiveModal] = useState<string | null>(null);
@@ -178,6 +179,9 @@ export default function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Admin Phone Notifications & Audio Controls */}
+      <PhoneNotificationBanner userCode="ADMIN" isEmployee={false} />
 
       {/* Workforce Live Attendance Bar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">

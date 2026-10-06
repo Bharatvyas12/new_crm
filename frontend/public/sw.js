@@ -1,5 +1,5 @@
 // Workforce CRM Service Worker for PWA Offline, Quick Launch & System Push Notifications
-const CACHE_NAME = "wcrm-pwa-v2";
+const CACHE_NAME = "wcrm-pwa-v3";
 const STATIC_ASSETS = [
   "/",
   "/app",
@@ -82,19 +82,18 @@ self.addEventListener("push", (event) => {
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     vibrate: [300, 150, 300, 150, 400],
-    tag: data.tag,
+    tag: data.tag || "wcrm-" + Date.now(),
     renotify: true,
     data: {
       url: data.url || "/app",
       timestamp: Date.now(),
     },
-    actions: [
-      { action: "open", title: "Open CRM App" },
-    ],
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title || "Workforce CRM Alert", options).catch((err) => {
+      console.warn("[SW] showNotification fallback error:", err);
+    })
   );
 });
 

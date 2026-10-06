@@ -303,16 +303,21 @@ async def trigger_test_push():
 
 
 
-def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Optional[str] = None):
+def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Optional[str] = None) -> int:
     """Sends background Web Push to devices even when the app is completely closed."""
+    global _push_subscriptions
+    if not _push_subscriptions and isinstance(_store_cache.get("_push_subscriptions"), dict):
+        _push_subscriptions.update(_store_cache["_push_subscriptions"])
+
     if not _push_subscriptions:
-        return
+        print("[WebPush] No registered push subscriptions to send to.")
+        return 0
 
     try:
         from pywebpush import webpush, WebPushException
     except ImportError:
         print("[WebPush] pywebpush not installed in environment, push skipped")
-        return
+        return 0
 
     payload_data = json.dumps({
         "title": title,
@@ -321,6 +326,7 @@ def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Op
         "tag": f"wcrm-{int(time.time())}",
     })
 
+    sent_count = 0
     expired_endpoints = []
     for endpoint, item in list(_push_subscriptions.items()):
         if target_code and item.get("employeeCode") not in (target_code, "ALL"):
@@ -333,6 +339,7 @@ def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Op
                 vapid_claims=VAPID_CLAIMS,
                 timeout=5,
             )
+            sent_count += 1
         except WebPushException as ex:
             if hasattr(ex, "response") and ex.response and ex.response.status_code in (404, 410):
                 expired_endpoints.append(endpoint)
@@ -343,6 +350,13 @@ def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Op
 
     for ep in expired_endpoints:
         _push_subscriptions.pop(ep, None)
+
+    if expired_endpoints:
+        _store_cache["_push_subscriptions"] = _push_subscriptions
+        _save_store_to_disk()
+
+    print(f"[WebPush] Dispatched push to {sent_count} device(s) successfully.")
+    return sent_count
 
 
 
@@ -480,6 +494,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         "advances": merged_advances,
         "ledger": merged_ledger,
         "complaints": merged_complaints,
+        "_push_subscriptions": _push_subscriptions,
     }
 
     old_orders_count = len(_store_cache.get("orders", []))

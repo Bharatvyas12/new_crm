@@ -346,9 +346,9 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
                   onClick={async () => {
                     setTestLoading(true);
                     playNotificationTune();
-                    const ok = await triggerTestPhonePush();
+                    const res = await triggerTestPhonePush();
                     setTestLoading(false);
-                    setTestMessage(ok ? "✓ Alert Sent! Check phone notification bar." : "Alert triggered locally.");
+                    setTestMessage(res.success ? `✓ Alert Sent to ${res.registered} phone(s)! Check notification bar.` : "Alert triggered locally.");
                     setTimeout(() => setTestMessage(null), 4000);
                   }}
                   className="w-full py-1.5 bg-white hover:bg-slate-50 border border-blue-200 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"

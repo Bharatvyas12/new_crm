@@ -163,17 +163,37 @@ export const subscribeToWebPush = async (userCode?: string): Promise<boolean> =>
 /**
  * Triggers an immediate backend Web Push to test sound and vibration on phone
  */
-export const triggerTestPhonePush = async (): Promise<boolean> => {
+export const triggerTestPhonePush = async (): Promise<{ success: boolean; registered: number; message: string }> => {
   try {
     const { API_BASE_URL } = await import("@/lib/api");
     const res = await fetch(`${API_BASE_URL}/sync/test-push`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
-    return res.ok;
-  } catch (e) {
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        registered: data.registered_subscribers || 0,
+        message: `Alert dispatched to ${data.registered_subscribers || 0} phone(s)!`,
+      };
+    }
+    return { success: false, registered: 0, message: "Backend error triggering push." };
+  } catch (e: any) {
     console.error("[WebPush] Test push error:", e);
-    return false;
+    return { success: false, registered: 0, message: e.message || "Network error" };
+  }
+};
+
+/**
+ * Ensures device is subscribed to Web Push if permission is granted
+ */
+export const ensureWebPushSubscribed = async (userCode?: string) => {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission === "granted") {
+    try {
+      await subscribeToWebPush(userCode);
+    } catch {}
   }
 };
 

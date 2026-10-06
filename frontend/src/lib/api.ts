@@ -1,4 +1,20 @@
-export const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://new-crm-c339.onrender.com/api/v1';
+const getBaseUrl = (): string => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") {
+      return "https://new-crm-c339.onrender.com/api/v1";
+    }
+  }
+  if (!envUrl || envUrl.includes("localhost")) {
+    if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
+      return "https://new-crm-c339.onrender.com/api/v1";
+    }
+  }
+  return envUrl || "https://new-crm-c339.onrender.com/api/v1";
+};
+
+export const BASE_URL = getBaseUrl();
 export const API_BASE_URL = BASE_URL;
 
 export class ApiError extends Error {
