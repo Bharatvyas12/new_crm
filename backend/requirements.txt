@@ -7,3 +7,4 @@ pydantic-settings
 argon2-cffi
 python-multipart
 httpx
+pywebpush

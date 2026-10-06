@@ -14,6 +14,8 @@ import {
   User,
   ArrowRight,
   ShieldCheck,
+  X,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -38,6 +40,8 @@ export default function EmployeeTasksPage() {
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [evidenceNote, setEvidenceNote] = useState("");
   const [evidenceFileName, setEvidenceFileName] = useState("");
+  const [evidenceImageData, setEvidenceImageData] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,6 +77,51 @@ export default function EmployeeTasksPage() {
     showToast(lang === "hi" ? "कार्य प्रगति में मार्क किया गया" : "Task marked as In Progress");
   };
 
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setEvidenceFileName(file.name);
+    setIsCompressing(true);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1200;
+
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+          setEvidenceImageData(compressedDataUrl);
+        } else {
+          setEvidenceImageData(event.target?.result as string);
+        }
+        setIsCompressing(false);
+      };
+      img.onerror = () => {
+        setEvidenceImageData(event.target?.result as string);
+        setIsCompressing(false);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmitEvidence = (taskId: string) => {
     if (!evidenceNote.trim()) {
       alert("Please enter a brief note or confirmation before submitting evidence.");
@@ -82,7 +131,7 @@ export default function EmployeeTasksPage() {
     submitTaskEvidenceInStore(
       taskId,
       evidenceNote.trim(),
-      evidenceFileName ? evidenceFileName : "site_photo_verification.jpg"
+      evidenceImageData || evidenceFileName || "site_photo_verification.jpg"
     );
 
     showToast(
@@ -93,6 +142,7 @@ export default function EmployeeTasksPage() {
     setSelectedTask(null);
     setEvidenceNote("");
     setEvidenceFileName("");
+    setEvidenceImageData(null);
   };
 
   return (
@@ -197,7 +247,7 @@ export default function EmployeeTasksPage() {
 
               {/* Task Evidence Submission Form */}
               {task.status === "Submitted" ? (
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 space-y-1">
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 space-y-2">
                   <div className="flex items-center gap-1.5 font-bold">
                     <ShieldCheck size={14} className="text-purple-600" />
                     <span>Evidence Submitted (Under Admin Review)</span>
@@ -205,6 +255,16 @@ export default function EmployeeTasksPage() {
                   <p className="text-[11px] text-purple-700">
                     <strong>Note:</strong> {task.evidenceNote || "Photo proof submitted"}
                   </p>
+                  {task.evidenceFile && task.evidenceFile.startsWith("data:image") && (
+                    <div className="pt-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={task.evidenceFile}
+                        alt="Uploaded proof"
+                        className="w-20 h-20 object-cover rounded-lg border border-purple-200 shadow-2xs"
+                      />
+                    </div>
+                  )}
                 </div>
               ) : task.status === "Completed" ? (
                 <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-center gap-1.5 font-bold">
@@ -230,24 +290,50 @@ export default function EmployeeTasksPage() {
 
                       <div>
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Attach Photo Proof (Optional)
+                          Attach Photo Proof (Camera / Gallery)
                         </label>
-                        <div className="flex items-center gap-2">
-                          <label className="cursor-pointer flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-white border border-dashed border-slate-300 hover:border-blue-500 text-slate-600 rounded-xl text-xs font-semibold transition-colors">
-                            <Camera size={14} className="text-blue-600" />
-                            <span>{evidenceFileName || "Take Photo / Choose File"}</span>
+                        {evidenceImageData ? (
+                          <div className="relative p-2 bg-white border border-slate-200 rounded-xl flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={evidenceImageData}
+                              alt="Proof preview"
+                              className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-800 truncate">
+                                {evidenceFileName || "photo_proof.jpg"}
+                              </p>
+                              <p className="text-[10px] text-emerald-600 font-medium">✓ Photo compressed & ready</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEvidenceImageData(null);
+                                setEvidenceFileName("");
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 transition-colors"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer flex items-center justify-center gap-2 py-3 px-3 bg-white border border-dashed border-slate-300 hover:border-blue-500 text-slate-600 rounded-xl text-xs font-semibold transition-colors">
+                            <Camera size={16} className="text-blue-600" />
+                            <span>
+                              {isCompressing
+                                ? "Compressing photo..."
+                                : "Take Photo / Choose Image"}
+                            </span>
                             <input
                               type="file"
                               accept="image/*"
+                              capture="environment"
                               className="hidden"
-                              onChange={(e) => {
-                                if (e.target.files?.[0]) {
-                                  setEvidenceFileName(e.target.files[0].name);
-                                }
-                              }}
+                              onChange={handleImageFileChange}
                             />
                           </label>
-                        </div>
+                        )}
                       </div>
 
                       <div className="flex gap-2 pt-1">

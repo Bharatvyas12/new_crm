@@ -226,6 +226,87 @@ class SyncPushPayload(BaseModel):
     deleted_order_ids: Optional[list[str]] = None
 
 
+# --- Web Push Notifications for Closed Mobile Phones ---
+VAPID_PUBLIC_KEY = os.environ.get(
+    "VAPID_PUBLIC_KEY",
+    "BIYt7ALGeT9f89rRzL6tAldELMO9kt7P-D3ZDAE8Af23y1fq5MX_pl-owRktAeaAhTe4IX0uqcaSw0mIfZJDRQQ"
+)
+VAPID_PRIVATE_KEY = os.environ.get(
+    "VAPID_PRIVATE_KEY",
+    "B639hmVe340fo8HTwAgUeC4IHZMJQ7lTgkcISnkzq70"
+)
+VAPID_CLAIMS = {"sub": "mailto:bharatvyas@crm.com"}
+
+_push_subscriptions: Dict[str, Dict[str, Any]] = {}
+
+
+class PushSubscriptionPayload(BaseModel):
+    subscription: Dict[str, Any]
+    employeeCode: Optional[str] = "ALL"
+    userAgent: Optional[str] = None
+
+
+@router.get("/vapid-public-key")
+async def get_vapid_public_key():
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@router.post("/push-subscribe")
+async def subscribe_to_push(payload: PushSubscriptionPayload):
+    endpoint = payload.subscription.get("endpoint")
+    if endpoint:
+        _push_subscriptions[endpoint] = {
+            "subscription": payload.subscription,
+            "employeeCode": payload.employeeCode,
+            "userAgent": payload.userAgent,
+            "subscribed_at": datetime.now(timezone.utc).isoformat(),
+        }
+    return {"status": "subscribed", "count": len(_push_subscriptions)}
+
+
+def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Optional[str] = None):
+    """Sends background Web Push to devices even when the app is completely closed."""
+    if not _push_subscriptions:
+        return
+
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        print("[WebPush] pywebpush not installed in environment, push skipped")
+        return
+
+    payload_data = json.dumps({
+        "title": title,
+        "body": body,
+        "url": url,
+        "tag": f"wcrm-{int(time.time())}",
+    })
+
+    expired_endpoints = []
+    for endpoint, item in list(_push_subscriptions.items()):
+        if target_code and item.get("employeeCode") not in (target_code, "ALL"):
+            continue
+        try:
+            webpush(
+                subscription_info=item["subscription"],
+                data=payload_data,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+                timeout=5,
+            )
+        except WebPushException as ex:
+            if hasattr(ex, "response") and ex.response and ex.response.status_code in (404, 410):
+                expired_endpoints.append(endpoint)
+            else:
+                print(f"[WebPush] Failed for endpoint: {ex}")
+        except Exception as e:
+            print(f"[WebPush] Error dispatching push: {e}")
+
+    for ep in expired_endpoints:
+        _push_subscriptions.pop(ep, None)
+
+
+
 @router.get("/db-status")
 async def get_db_status():
     """Diagnostic check to confirm PostgreSQL connectivity and sync status."""
@@ -362,6 +443,9 @@ async def update_cloud_store(payload: SyncPushPayload):
         "complaints": merged_complaints,
     }
 
+    old_orders_count = len(_store_cache.get("orders", []))
+    old_tasks_count = len(_store_cache.get("tasks", []))
+
     _store_cache = merged
     _store_version += 1
     _store_updated_at = datetime.now(timezone.utc).isoformat()
@@ -369,6 +453,20 @@ async def update_cloud_store(payload: SyncPushPayload):
     # Persist to disk and PostgreSQL
     _save_store_to_disk()
     await save_store_to_postgres()
+
+    # Trigger background Web Push if new orders or tasks were added
+    if len(merged_orders) > old_orders_count:
+        broadcast_web_push(
+            "📦 New Order in Pool!",
+            "A new wholesale order is available in the pool. Tap to view.",
+            "/app/orders"
+        )
+    if len(merged_tasks) > old_tasks_count:
+        broadcast_web_push(
+            "📋 New Work Task Assigned!",
+            "Admin assigned or updated tasks. Tap to open tasks.",
+            "/app/tasks"
+        )
     
     return {
         "status": "ok",

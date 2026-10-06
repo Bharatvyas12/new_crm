@@ -933,10 +933,21 @@ export const getActiveShift = (employeeCode: string): ActiveShiftState | null =>
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
   const shift = store.activeShifts?.[employeeCode];
   if (!shift) return null;
-  if (shift.date !== today && shift.shiftState === "ACTIVE") {
-    shift.shiftState = "COMPLETED";
+  // If the shift is from a previous day, start a fresh new shift for today!
+  if (shift.date !== today) {
+    return null;
   }
   return shift;
+};
+
+export const resetShiftForEmployeeInStore = (employeeCode: string) => {
+  const store = getCRMStore();
+  if (store.activeShifts && store.activeShifts[employeeCode]) {
+    delete store.activeShifts[employeeCode];
+    saveCRMStore(store);
+    return true;
+  }
+  return false;
 };
 
 export const updateAttendanceRecordInStore = (record: AttendanceRecord) => {

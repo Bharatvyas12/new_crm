@@ -57,6 +57,47 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// Handle background Web Push Notifications from OS / Push Service when app is closed
+self.addEventListener("push", (event) => {
+  let data = {
+    title: "Workforce CRM Alert",
+    body: "New update on task, attendance or orders.",
+    url: "/app",
+    tag: "wcrm-push-" + Date.now(),
+  };
+
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      data = { ...data, ...parsed };
+    }
+  } catch (e) {
+    if (event.data) {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    vibrate: [300, 150, 300, 150, 400],
+    tag: data.tag,
+    renotify: true,
+    data: {
+      url: data.url || "/app",
+      timestamp: Date.now(),
+    },
+    actions: [
+      { action: "open", title: "Open CRM App" },
+    ],
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
 // Handle phone notification clicks: Open or focus CRM app window
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
@@ -75,3 +116,4 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+

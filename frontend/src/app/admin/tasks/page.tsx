@@ -456,6 +456,21 @@ export default function TasksPage() {
                   <p className="text-blue-700"><strong>Submitted Evidence:</strong> {selectedTask.evidenceNote}</p>
                 </div>
               )}
+              {selectedTask.evidenceFile && (
+                <div className="pt-2 border-t border-slate-200">
+                  <p className="font-semibold text-slate-700 mb-1">Attached Photo Proof:</p>
+                  {selectedTask.evidenceFile.startsWith("data:image") || selectedTask.evidenceFile.startsWith("http") ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={selectedTask.evidenceFile}
+                      alt="Task Evidence"
+                      className="max-h-48 w-auto rounded-lg border border-slate-300 shadow-xs"
+                    />
+                  ) : (
+                    <span className="text-slate-600">{selectedTask.evidenceFile}</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">

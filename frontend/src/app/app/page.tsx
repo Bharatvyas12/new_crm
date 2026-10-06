@@ -43,7 +43,9 @@ import {
   endBreakInStore,
   checkOutEmployeeInStore,
   getActiveShift,
+  resetShiftForEmployeeInStore,
 } from "@/lib/store";
+import { subscribeToWebPush } from "@/lib/phoneNotifications";
 
 export default function EmployeeHomePage() {
   const { user, logout } = useAuth();
@@ -134,6 +136,9 @@ export default function EmployeeHomePage() {
   useEffect(() => {
     loadStoreData();
     const unsubscribe = subscribeToCRMStore(loadStoreData);
+    if (employeeCode) {
+      subscribeToWebPush(employeeCode);
+    }
     return () => unsubscribe();
   }, [employeeCode]);
 
@@ -221,6 +226,16 @@ export default function EmployeeHomePage() {
       if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);
       showToast(`✓ Checked out at ${shift.checkOutTime}. Full day attendance recorded!`);
     }
+  };
+
+  const handleReCheckIn = () => {
+    resetShiftForEmployeeInStore(employeeCode);
+    setShiftState("NOT_STARTED");
+    setCheckInTime("—");
+    setCheckOutTime("—");
+    setSecondsElapsed(0);
+    setBreakSeconds(0);
+    handleOpenCheckIn();
   };
 
   const handleCorrectionSubmit = (e: React.FormEvent) => {
@@ -504,8 +519,18 @@ export default function EmployeeHomePage() {
           )}
 
           {shiftState === "COMPLETED" && (
-            <div className="text-center py-2.5 text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5">
-              <CheckCircle2 size={16} /> {lang === "hi" ? "दिन की शिफ्ट पूरी हुई" : "Day Shift Finished"} ({formatHoursMinutes(secondsElapsed)})
+            <div className="space-y-2 pt-1">
+              <div className="text-center py-2.5 text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5">
+                <CheckCircle2 size={16} /> {lang === "hi" ? "दिन की शिफ्ट पूरी हुई" : "Day Shift Finished"} ({formatHoursMinutes(secondsElapsed)})
+              </div>
+              <button
+                type="button"
+                onClick={handleReCheckIn}
+                className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#1a73e8] rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+              >
+                <RefreshCw size={14} className="text-[#1a73e8]" />
+                <span>{lang === "hi" ? "दोबारा चेक-इन करें / नई शिफ्ट शुरू करें" : "Check In Again / Start New Shift"}</span>
+              </button>
             </div>
           )}
         </div>

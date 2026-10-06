@@ -37,38 +37,82 @@ export default function AdminAttendanceRegisterPage() {
       const atts = store.attendance || [];
       const employees = store.employees || [];
       const activeShifts = store.activeShifts || {};
-      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 
-      const staffEmployees = employees.filter((emp) => !emp.code.includes("ADMIN") && emp.department !== "Management");
+      // Parse selected date safely
+      const [y, m, d] = (selectedDate || new Date().toISOString().split("T")[0])
+        .split("-")
+        .map(Number);
+      const targetDateObj = new Date(y, m - 1, d);
+      const targetDateStr = targetDateObj.toLocaleDateString("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      });
 
-      // Build today's live employee roster
-      const todayRecords: AttendanceRecord[] = staffEmployees.map((emp) => {
-        const existing = atts.find((a) => a.employeeCode === emp.code && a.date === today);
+      const todayStr = new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      });
+      const isTargetToday = targetDateStr === todayStr;
+
+      const staffEmployees = employees.filter(
+        (emp) => !emp.code.includes("ADMIN") && emp.department !== "Management"
+      );
+
+      // Build roster for selected date
+      const dateRecords: AttendanceRecord[] = staffEmployees.map((emp) => {
+        // 1. Check existing saved attendance history for this date
+        const existing = atts.find(
+          (a) => a.employeeCode === emp.code && a.date === targetDateStr
+        );
         if (existing) return existing;
-        const shift = activeShifts[emp.code];
-        if (shift && shift.date === today && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) {
-          const elapsedHours = Number(((Date.now() - shift.checkInTimestamp) / 3600000).toFixed(1));
-          return {
-            id: `att-live-${emp.code}`,
-            employeeName: emp.name,
-            employeeCode: emp.code,
-            department: emp.department,
-            date: today,
-            checkIn: shift.checkInTime,
-            checkOut: "—",
-            workedHours: elapsedHours > 0 ? elapsedHours : 0.1,
-            overtimeHours: 0,
-            classification: "PARTIAL_DAY",
-            status: "Present",
-            distanceM: shift.distanceM,
-          };
+
+        // 2. If target is today, check active live shift
+        if (isTargetToday) {
+          const shift = activeShifts[emp.code];
+          if (
+            shift &&
+            shift.date === todayStr &&
+            (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")
+          ) {
+            const elapsedSec = Math.max(
+              0,
+              Math.floor((Date.now() - shift.checkInTimestamp) / 1000) -
+                (shift.totalBreakSeconds || 0)
+            );
+            const elapsedHours = Number((elapsedSec / 3600).toFixed(1));
+            const classification =
+              elapsedHours >= 10
+                ? "FULL_DAY"
+                : elapsedHours >= 5
+                ? "HALF_DAY"
+                : "PARTIAL_DAY";
+
+            return {
+              id: `att-live-${emp.code}`,
+              employeeName: emp.name,
+              employeeCode: emp.code,
+              department: emp.department,
+              date: todayStr,
+              checkIn: shift.checkInTime,
+              checkOut: "—",
+              workedHours: elapsedHours,
+              overtimeHours: elapsedHours > 10 ? Number((elapsedHours - 10).toFixed(1)) : 0,
+              classification: classification as any,
+              status: "Present",
+              distanceM: shift.distanceM,
+            };
+          }
         }
+
+        // 3. Otherwise, employee was absent / not checked in on this date
         return {
-          id: `att-absent-${emp.code}`,
+          id: `att-absent-${emp.code}-${targetDateStr}`,
           employeeName: emp.name,
           employeeCode: emp.code,
           department: emp.department,
-          date: today,
+          date: targetDateStr,
           checkIn: "—",
           checkOut: "—",
           workedHours: 0,
@@ -79,14 +123,19 @@ export default function AdminAttendanceRegisterPage() {
         };
       });
 
-      const pastRecords = atts.filter((a) => a.date !== today);
-      setRecords([...todayRecords, ...pastRecords]);
+      setRecords(dateRecords);
     };
 
     loadRecords();
     const unsubscribe = subscribeToCRMStore(loadRecords);
-    return () => unsubscribe();
-  }, []);
+    // Live interval to update active shift ticking hours every 10 seconds
+    const timer = setInterval(loadRecords, 10000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, [selectedDate]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);

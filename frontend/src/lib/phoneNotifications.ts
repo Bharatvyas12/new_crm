@@ -90,10 +90,75 @@ export const playNotificationTune = () => {
   }
 };
 
+// VAPID Public Key generated for Workforce CRM Web Push
+export const VAPID_PUBLIC_KEY =
+  "BIYt7ALGeT9f89rRzL6tAldELMO9kt7P-D3ZDAE8Af23y1fq5MX_pl-owRktAeaAhTe4IX0uqcaSw0mIfZJDRQQ";
+
+/**
+ * Converts URL-safe base64 string to Uint8Array for PushManager
+ */
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+/**
+ * Subscribes the device to background OS push notifications via W3C Push Service
+ */
+export const subscribeToWebPush = async (userCode?: string): Promise<boolean> => {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return false;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (!reg.pushManager) return false;
+
+    // Check existing subscription
+    let subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey as unknown as BufferSource,
+      });
+    }
+
+    if (subscription) {
+      const subJSON = subscription.toJSON();
+      const code = userCode || localStorage.getItem("wcrm_last_user") || "ALL";
+
+      // Send subscription to backend
+      const { API_BASE_URL } = await import("@/lib/api");
+      await fetch(`${API_BASE_URL}/sync/push-subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: subJSON,
+          employeeCode: code,
+          userAgent: navigator.userAgent,
+        }),
+      }).catch((e) => console.log("[WebPush] Backend subscribe note:", e));
+
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.debug("[WebPush] Subscription setup note:", err);
+    return false;
+  }
+};
+
 /**
  * Requests notification permission from phone operating system
  */
-export const requestPhoneNotificationPermission = async (): Promise<boolean> => {
+export const requestPhoneNotificationPermission = async (userCode?: string): Promise<boolean> => {
   if (typeof window === "undefined" || !("Notification" in window)) return false;
   try {
     unlockAudio();
@@ -104,9 +169,12 @@ export const requestPhoneNotificationPermission = async (): Promise<boolean> => 
       playNotificationTune();
       sendSystemPhoneNotification(
         "🔔 Notifications Active!",
-        "You will now receive sound alerts for new tasks & orders.",
+        "You will now receive sound alerts for new tasks & orders even when app is closed.",
         "/app"
       );
+
+      // Register background Web Push subscription
+      await subscribeToWebPush(userCode);
       return true;
     }
     return false;
@@ -172,3 +240,4 @@ export const sendSystemPhoneNotification = async (
     }
   }
 };
+
