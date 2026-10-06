@@ -117,10 +117,15 @@ export const subscribeToWebPush = async (userCode?: string): Promise<boolean> =>
   }
 
   try {
+    // 1. Ensure service worker is registered
+    await navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.warn("[WebPush] sw.js registration note:", err);
+    });
+
     const reg = await navigator.serviceWorker.ready;
     if (!reg.pushManager) return false;
 
-    // Check existing subscription
+    // 2. Check existing subscription or subscribe
     let subscription = await reg.pushManager.getSubscription();
     if (!subscription) {
       const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
@@ -134,9 +139,9 @@ export const subscribeToWebPush = async (userCode?: string): Promise<boolean> =>
       const subJSON = subscription.toJSON();
       const code = userCode || localStorage.getItem("wcrm_last_user") || "ALL";
 
-      // Send subscription to backend
+      // 3. Send subscription to backend
       const { API_BASE_URL } = await import("@/lib/api");
-      await fetch(`${API_BASE_URL}/sync/push-subscribe`, {
+      const res = await fetch(`${API_BASE_URL}/sync/push-subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,11 +151,28 @@ export const subscribeToWebPush = async (userCode?: string): Promise<boolean> =>
         }),
       }).catch((e) => console.log("[WebPush] Backend subscribe note:", e));
 
-      return true;
+      return res ? res.ok : true;
     }
     return false;
   } catch (err) {
     console.debug("[WebPush] Subscription setup note:", err);
+    return false;
+  }
+};
+
+/**
+ * Triggers an immediate backend Web Push to test sound and vibration on phone
+ */
+export const triggerTestPhonePush = async (): Promise<boolean> => {
+  try {
+    const { API_BASE_URL } = await import("@/lib/api");
+    const res = await fetch(`${API_BASE_URL}/sync/test-push`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("[WebPush] Test push error:", e);
     return false;
   }
 };

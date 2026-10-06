@@ -80,6 +80,9 @@ def _load_store_from_disk():
                     _store_cache = data
                     _store_version = payload.get("version", 1)
                     _store_updated_at = payload.get("updated_at", datetime.now(timezone.utc).isoformat())
+                    subs = data.get("_push_subscriptions")
+                    if isinstance(subs, dict):
+                        _push_subscriptions.update(subs)
                     return
         except Exception as e:
             print(f"[Sync] Error reading store from disk: {e}")
@@ -106,7 +109,7 @@ def _save_store_to_disk():
 
 async def load_store_from_postgres() -> bool:
     """Loads latest sync store from persistent PostgreSQL table if available."""
-    global _store_cache, _store_version, _store_updated_at
+    global _store_cache, _store_version, _store_updated_at, _push_subscriptions
     try:
         from app.database import AsyncSessionLocal, CloudSyncStore
         from sqlalchemy import select
@@ -118,6 +121,9 @@ async def load_store_from_postgres() -> bool:
                 _store_cache = record.data
                 _store_version = record.version
                 _store_updated_at = record.updated_at
+                subs = record.data.get("_push_subscriptions")
+                if isinstance(subs, dict):
+                    _push_subscriptions.update(subs)
                 print(f"[Sync-Postgres] Successfully loaded store v{_store_version} from database.")
                 return True
     except Exception as e:
@@ -199,6 +205,7 @@ def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str =
 
 
 def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
+    today_str = datetime.now().strftime("%b %d, %Y")
     if not isinstance(existing_shifts, dict):
         existing_shifts = {}
     if not isinstance(incoming_shifts, dict):
@@ -207,15 +214,23 @@ def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
     merged = dict(existing_shifts)
     for emp_code, shift in incoming_shifts.items():
         if isinstance(shift, dict):
-            existing = merged.get(emp_code)
-            if existing and isinstance(existing, dict):
-                incoming_ts = shift.get("checkInTimestamp", 0)
-                existing_ts = existing.get("checkInTimestamp", 0)
-                if incoming_ts >= existing_ts:
+            # Only accept shifts that belong to today
+            if shift.get("date") == today_str:
+                existing = merged.get(emp_code)
+                if existing and isinstance(existing, dict):
+                    incoming_ts = shift.get("checkInTimestamp", 0)
+                    existing_ts = existing.get("checkInTimestamp", 0)
+                    if incoming_ts >= existing_ts:
+                        merged[emp_code] = shift
+                else:
                     merged[emp_code] = shift
-            else:
-                merged[emp_code] = shift
-    return merged
+
+    # Filter out any shifts from past days so they never linger into today
+    cleaned = {}
+    for emp_code, shift in merged.items():
+        if isinstance(shift, dict) and shift.get("date") == today_str:
+            cleaned[emp_code] = shift
+    return cleaned
 
 
 class SyncPushPayload(BaseModel):
@@ -261,7 +276,31 @@ async def subscribe_to_push(payload: PushSubscriptionPayload):
             "userAgent": payload.userAgent,
             "subscribed_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Persist across restarts
+        _store_cache["_push_subscriptions"] = _push_subscriptions
+        _save_store_to_disk()
+        try:
+            await save_store_to_postgres()
+        except Exception:
+            pass
+
     return {"status": "subscribed", "count": len(_push_subscriptions)}
+
+
+@router.post("/test-push")
+async def trigger_test_push():
+    """Manually test web push to all subscribed phones with vibration & sound."""
+    sent = broadcast_web_push(
+        "🔔 Workforce CRM Alert!",
+        "Live test alert! Push notification & sound are fully active on this device.",
+        "/app"
+    )
+    return {
+        "status": "dispatched",
+        "registered_subscribers": len(_push_subscriptions),
+        "sent_count": sent,
+    }
+
 
 
 def broadcast_web_push(title: str, body: str, url: str = "/app", target_code: Optional[str] = None):

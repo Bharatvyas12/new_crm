@@ -19,6 +19,13 @@ import { getCRMStore, subscribeToCRMStore, OrderItem, TaskItem } from "@/lib/sto
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 
+import {
+  requestPhoneNotificationPermission,
+  isNotificationPermissionGranted,
+  triggerTestPhonePush,
+  playNotificationTune,
+} from "@/lib/phoneNotifications";
+
 export interface LiveNotificationItem {
   id: string;
   type: "ORDER" | "TASK" | "ADVANCE" | "LEAVE" | "CORRECTION";
@@ -36,6 +43,9 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
   const [notifications, setNotifications] = useState<LiveNotificationItem[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [prevCount, setPrevCount] = useState<number | null>(null);
+  const [hasPerm, setHasPerm] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
 
   const empCode = (user?.employee_id || "E001").trim().toUpperCase();
   const empName = (user?.full_name || user?.name || "Bharat vyas").trim().toLowerCase();
@@ -249,6 +259,9 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
 
   useEffect(() => {
     computeNotifications();
+    if (typeof window !== "undefined") {
+      setHasPerm(isNotificationPermissionGranted());
+    }
     const unsubscribe = subscribeToCRMStore(computeNotifications);
     return () => unsubscribe();
   }, [isEmployee, empCode, empName, soundEnabled]);
@@ -300,6 +313,54 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
                   <X size={16} />
                 </button>
               </div>
+            </div>
+
+            {/* Phone Push & Tune Setup Bar */}
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                  <Volume2 size={14} className="text-blue-600" />
+                  {lang === "hi" ? "फोन रिंगटोन व पुश अलर्ट" : "Phone Sound & Push Alerts"}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${hasPerm ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                  {hasPerm ? "✓ Active" : "Action Needed"}
+                </span>
+              </div>
+
+              {!hasPerm ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await requestPhoneNotificationPermission(empCode);
+                    setHasPerm(ok);
+                  }}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Bell size={13} />
+                  <span>{lang === "hi" ? "🔔 फोन में नोटिफिकेशन चालू करें (Allow)" : "🔔 Enable Phone Push & Ringtone"}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={testLoading}
+                  onClick={async () => {
+                    setTestLoading(true);
+                    playNotificationTune();
+                    const ok = await triggerTestPhonePush();
+                    setTestLoading(false);
+                    setTestMessage(ok ? "✓ Alert Sent! Check phone notification bar." : "Alert triggered locally.");
+                    setTimeout(() => setTestMessage(null), 4000);
+                  }}
+                  className="w-full py-1.5 bg-white hover:bg-slate-50 border border-blue-200 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Volume2 size={13} className="text-blue-600" />
+                  <span>{testLoading ? "Sending..." : "📲 Test Sound Alert (Ringtone & Vibrate)"}</span>
+                </button>
+              )}
+
+              {testMessage && (
+                <p className="text-[11px] text-emerald-700 font-semibold text-center">{testMessage}</p>
+              )}
             </div>
 
             <div className="max-h-80 overflow-y-auto space-y-2 pr-1 scrollbar-thin">

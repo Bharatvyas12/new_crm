@@ -836,7 +836,7 @@ export const checkInEmployeeInStore = (data: {
     date: today,
     checkIn: nowTime,
     checkOut: "—",
-    workedHours: 0.1,
+    workedHours: 0,
     overtimeHours: 0,
     classification: "PARTIAL_DAY",
     status: "Present",
@@ -848,6 +848,7 @@ export const checkInEmployeeInStore = (data: {
       ...store.attendance[existingIndex],
       status: "Present",
       checkIn: nowTime,
+      checkOut: "—",
       distanceM: data.distanceM ?? 20,
     };
   } else {
@@ -856,6 +857,67 @@ export const checkInEmployeeInStore = (data: {
 
   saveCRMStore(store);
   return activeShift;
+};
+
+/**
+ * Dynamically computes worked hours for active or completed attendance records
+ */
+export const getDynamicWorkedHours = (
+  record: AttendanceRecord,
+  shift?: ActiveShiftState | null
+): { hours: number; mins: number; display: string } => {
+  // If completed and checkOut exists
+  if (record.checkOut && record.checkOut !== "—" && record.workedHours > 0) {
+    const mins = Math.round(record.workedHours * 60);
+    return {
+      hours: record.workedHours,
+      mins,
+      display: `${record.workedHours} hrs`,
+    };
+  }
+
+  // If on duty (shift is active or record has unclosed checkIn)
+  if (record.status === "Present" || (shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK"))) {
+    let checkInTimestamp = shift?.checkInTimestamp;
+
+    if (!checkInTimestamp && record.checkIn && record.checkIn !== "—") {
+      try {
+        const parts = record.checkIn.match(/(\d+):(\d+)(?:\s*(AM|PM))?/i);
+        if (parts) {
+          let h = parseInt(parts[1], 10);
+          const m = parseInt(parts[2], 10);
+          const ampm = parts[3]?.toUpperCase();
+          if (ampm === "PM" && h < 12) h += 12;
+          if (ampm === "AM" && h === 12) h = 0;
+          const d = new Date();
+          d.setHours(h, m, 0, 0);
+          checkInTimestamp = d.getTime();
+        }
+      } catch {}
+    }
+
+    if (checkInTimestamp) {
+      const breakSec = shift?.totalBreakSeconds || 0;
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - checkInTimestamp) / 1000) - breakSec);
+      const hours = Math.floor(elapsedSec / 3600);
+      const mins = Math.floor((elapsedSec % 3600) / 60);
+      const totalMins = Math.floor(elapsedSec / 60);
+      const decimal = Number((elapsedSec / 3600).toFixed(1));
+      const activeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+      return {
+        hours: decimal,
+        mins: totalMins,
+        display: `${decimal} hrs (${activeStr} active)`,
+      };
+    }
+  }
+
+  return {
+    hours: record.workedHours || 0,
+    mins: Math.round((record.workedHours || 0) * 60),
+    display: record.workedHours > 0 ? `${record.workedHours} hrs` : "0 hrs",
+  };
 };
 
 export const startBreakInStore = (employeeCode: string) => {
