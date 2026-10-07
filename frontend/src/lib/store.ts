@@ -210,7 +210,7 @@ export const cleanBaselineStore: CRMStoreData = {
     address: "Plot 42, Wholesale Trade Center, Ring Road",
     latitude: 26.9124,
     longitude: 75.7873,
-    geofenceRadiusM: 40,
+    geofenceRadiusM: 10,
     shiftStart: "09:00",
     shiftEnd: "19:00",
     requiredDailyHours: 10,
@@ -824,6 +824,10 @@ export const checkInEmployeeInStore = (data: {
   distanceM?: number;
 }) => {
   const store = getCRMStore();
+  const allowedRadius = store.settings?.geofenceRadiusM || 10;
+  if (typeof data.distanceM === "number" && data.distanceM > allowedRadius) {
+    throw new Error(`Location outside geofence: ${data.distanceM}m exceeds allowed shop limit of ${allowedRadius}m.`);
+  }
   const now = new Date();
   const today = now.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
   const nowTime = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

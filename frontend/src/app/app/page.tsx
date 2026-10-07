@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Smartphone,
   Download,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
@@ -71,8 +72,11 @@ export default function EmployeeHomePage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [qrInput, setQrInput] = useState("");
-  const [distanceMeters, setDistanceMeters] = useState<number>(20);
-  const [settingsGeofenceRadius, setSettingsGeofenceRadius] = useState<number>(40);
+  const [gpsState, setGpsState] = useState<"IDLE" | "LOCATING" | "VERIFIED" | "OUTSIDE_GEOFENCE" | "PERMISSION_DENIED" | "UNAVAILABLE">("IDLE");
+  const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
+  const [settingsGeofenceRadius, setSettingsGeofenceRadius] = useState<number>(10);
 
   // Correction Form
   const [correctionForm, setCorrectionForm] = useState({
@@ -187,38 +191,82 @@ export default function EmployeeHomePage() {
 
   const shiftProgressPercent = Math.min(100, Math.max(8, (secondsElapsed / 36000) * 100));
 
-  const handleOpenCheckIn = () => {
-    setShowCheckInModal(true);
+  const fetchAndVerifyLocation = () => {
+    setGpsState("LOCATING");
+    setGpsErrorMsg(null);
     const store = getCRMStore();
-    const shopLat = store.settings?.latitude || 26.9124;
-    const shopLng = store.settings?.longitude || 75.7873;
-    const allowedRadius = store.settings?.geofenceRadiusM || 40;
+    const shopLat = store.settings?.latitude;
+    const shopLng = store.settings?.longitude;
+    const allowedRadius = store.settings?.geofenceRadiusM || 10;
     setSettingsGeofenceRadius(allowedRadius);
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const R = 6371e3;
-          const φ1 = (pos.coords.latitude * Math.PI) / 180;
-          const φ2 = (shopLat * Math.PI) / 180;
-          const Δφ = ((shopLat - pos.coords.latitude) * Math.PI) / 180;
-          const Δλ = ((shopLng - pos.coords.longitude) * Math.PI) / 180;
-          const a =
-            Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const calculatedDist = Math.round(R * c);
-          setDistanceMeters(calculatedDist < 1000 ? calculatedDist : 15);
-        },
-        () => {
-          setDistanceMeters(Math.min(15, Math.max(5, allowedRadius - 5)));
-        },
-        { enableHighAccuracy: true, timeout: 4000 }
-      );
+    if (typeof shopLat !== "number" || typeof shopLng !== "number") {
+      setGpsState("UNAVAILABLE");
+      setGpsErrorMsg("दुकान की लोकेशन सेटिंग्स में सेट नहीं है। कृपया एडमिन से संपर्क करें।");
+      return;
     }
+
+    if (!navigator.geolocation) {
+      setGpsState("UNAVAILABLE");
+      setGpsErrorMsg("आपके मोबाइल ब्राउज़र में GPS Geolocation समर्थित नहीं है।");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const userLat = pos.coords.latitude;
+        const userLng = pos.coords.longitude;
+        const acc = Math.round(pos.coords.accuracy);
+        setGpsAccuracy(acc);
+
+        // Exact Haversine Great-Circle formula
+        const R = 6371e3; // Earth radius in metres
+        const φ1 = (userLat * Math.PI) / 180;
+        const φ2 = (shopLat * Math.PI) / 180;
+        const Δφ = ((shopLat - userLat) * Math.PI) / 180;
+        const Δλ = ((shopLng - userLng) * Math.PI) / 180;
+
+        const a =
+          Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+          Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const realDistMeters = Math.round(R * c);
+
+        setDistanceMeters(realDistMeters);
+
+        if (realDistMeters <= allowedRadius) {
+          setGpsState("VERIFIED");
+        } else {
+          setGpsState("OUTSIDE_GEOFENCE");
+        }
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setGpsState("PERMISSION_DENIED");
+          setGpsErrorMsg("लोकेशन अनुमति (GPS) बंद है। कृपया फोन ब्राउज़र में Location Allow करें।");
+        } else if (err.code === err.TIMEOUT) {
+          setGpsState("UNAVAILABLE");
+          setGpsErrorMsg("GPS सिग्नल टाइमआउट हुआ। कृपया फोन का Location ऑन करें और पुनः जांचें।");
+        } else {
+          setGpsState("UNAVAILABLE");
+          setGpsErrorMsg(err.message || "GPS लोकेशन नहीं मिल सकी।");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
+
+  const handleOpenCheckIn = () => {
+    setShowCheckInModal(true);
+    fetchAndVerifyLocation();
   };
 
   const handleConfirmCheckIn = () => {
+    if (gpsState !== "VERIFIED" || distanceMeters === null || distanceMeters > settingsGeofenceRadius) {
+      alert(`⚠️ चेक-इन ब्लॉक है: आप दुकान से ${distanceMeters ?? "अज्ञात"} मीटर दूर हैं!\n\nअनुमत सीमा: केवल ${settingsGeofenceRadius} मीटर।\nहाज़िरी दर्ज करने के लिए आपका दुकान परिसर में उपस्थित होना अनिवार्य है।`);
+      return;
+    }
+
     const shift = checkInEmployeeInStore({
       employeeCode,
       employeeName,
@@ -229,7 +277,7 @@ export default function EmployeeHomePage() {
     setCheckInTime(shift.checkInTime);
     setSecondsElapsed(1);
     setShowCheckInModal(false);
-    showToast(`✓ Check-In confirmed at ${shift.checkInTime} via GPS Geofence! (Persisted)`);
+    showToast(`✓ Check-In confirmed at ${shift.checkInTime} via verified GPS (${distanceMeters}m from counter)!`);
   };
 
   const handleStartBreak = () => {
@@ -659,30 +707,109 @@ export default function EmployeeHomePage() {
               </button>
             </div>
 
-            <div className={`p-4 rounded-2xl border space-y-1.5 transition-colors ${
-              distanceMeters <= settingsGeofenceRadius
-                ? "bg-emerald-50/70 border-emerald-200"
-                : "bg-red-50/70 border-red-200"
-            }`}>
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className={`flex items-center gap-1.5 ${
-                  distanceMeters <= settingsGeofenceRadius ? "text-emerald-800" : "text-red-800"
-                }`}>
-                  <MapPin className={`w-4 h-4 ${distanceMeters <= settingsGeofenceRadius ? "text-emerald-600" : "text-red-600"}`} />
-                  GPS Geofence ({settingsGeofenceRadius}m Lock)
-                </span>
-                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                  distanceMeters <= settingsGeofenceRadius
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-red-100 text-red-800"
-                }`}>
-                  {distanceMeters <= settingsGeofenceRadius ? "✓ Within Geofence" : "⚠️ Outside Geofence"}
-                </span>
+            {/* Strict GPS Geofence Verification Card */}
+            {gpsState === "LOCATING" && (
+              <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 space-y-2 animate-pulse">
+                <div className="flex items-center justify-between text-xs font-bold text-blue-900">
+                  <span className="flex items-center gap-1.5">
+                    <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
+                    GPS उपग्रह से लोकेशन जांची जा रही है...
+                  </span>
+                  <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                    माप रहे हैं...
+                  </span>
+                </div>
+                <p className="text-xs text-blue-800">
+                  दुकान परिसर से रीयल-टाइम दूरी मापी जा रही है। कृपया 2-3 सेकंड रुकें...
+                </p>
               </div>
-              <p className={`text-xs font-mono ${distanceMeters <= settingsGeofenceRadius ? "text-emerald-900/80" : "text-red-900/80"}`}>
-                Distance: <strong>{distanceMeters}m</strong> (Allowed Shop Limit: <strong>{settingsGeofenceRadius}m</strong>)
-              </p>
-            </div>
+            )}
+
+            {gpsState === "OUTSIDE_GEOFENCE" && (
+              <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-300 space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs font-bold text-red-900">
+                  <span className="flex items-center gap-1.5">
+                    <X className="w-4 h-4 text-red-600 stroke-[3]" />
+                    ❌ दुकान की सीमा से बाहर (Check-In Blocked)
+                  </span>
+                  <span className="bg-red-200 text-red-900 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase">
+                    अनुमति नहीं है
+                  </span>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-red-200 font-mono text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">दुकान से आपकी दूरी:</span>
+                    <strong className="text-red-600 text-sm">{distanceMeters} मीटर</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">अनुमत अधिकतम सीमा:</span>
+                    <strong className="text-slate-800">केवल {settingsGeofenceRadius} मीटर</strong>
+                  </div>
+                  {gpsAccuracy && (
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>GPS Accuracy:</span>
+                      <span>±{gpsAccuracy}m</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-red-700 font-medium leading-relaxed">
+                  ⚠️ आप दुकान से काफी दूर हैं। चेक-इन करने के लिए कृपया दुकान परिसर में आएं (दूरी {settingsGeofenceRadius} मीटर के अंदर होनी चाहिए)।
+                </p>
+                <button
+                  type="button"
+                  onClick={fetchAndVerifyLocation}
+                  className="w-full py-1.5 bg-red-100 hover:bg-red-200 text-red-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw size={12} />
+                  <span>दूरी दोबारा मापें (Re-check GPS)</span>
+                </button>
+              </div>
+            )}
+
+            {gpsState === "VERIFIED" && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    ✓ दुकान परिसर में उपस्थित (Verified)
+                  </span>
+                  <span className="bg-emerald-200 text-emerald-900 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                    सत्यापित
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-emerald-200 font-mono text-xs flex justify-between items-center">
+                  <span className="text-slate-600">दुकान से दूरी:</span>
+                  <span className="font-extrabold text-emerald-700 text-sm">
+                    {distanceMeters}m (सीमा: {settingsGeofenceRadius}m)
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-800">
+                  ✓ आपकी लाइव GPS लोकेशन दुकान की परिधि के अंदर पाई गई है। अब आप चेक-इन कर सकते हैं।
+                </p>
+              </div>
+            )}
+
+            {(gpsState === "PERMISSION_DENIED" || gpsState === "UNAVAILABLE") && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    लोकेशन अनुमति आवश्यक (GPS Required)
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  {gpsErrorMsg || "चेक-इन के लिए आपके फोन का GPS ऑन होना और ब्राउज़र में Location Allow होना आवश्यक है।"}
+                </p>
+                <button
+                  type="button"
+                  onClick={fetchAndVerifyLocation}
+                  className="w-full py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw size={12} />
+                  <span>GPS अनुमति दोबारा जांचें (Retry)</span>
+                </button>
+              </div>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -705,10 +832,6 @@ export default function EmployeeHomePage() {
                 onChange={(e) => setQrInput(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-mono focus:bg-white"
               />
-
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                💡 <em>You are within verified GPS range. Token is optional; 1-tap confirm checks you in immediately!</em>
-              </p>
             </div>
 
             <div className="flex items-center gap-3 pt-2">
@@ -721,10 +844,35 @@ export default function EmployeeHomePage() {
               </button>
               <button
                 type="button"
+                disabled={gpsState !== "VERIFIED"}
                 onClick={handleConfirmCheckIn}
-                className="w-2/3 py-2.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                className={`w-2/3 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 ${
+                  gpsState === "VERIFIED"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-md shadow-emerald-600/20"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                }`}
               >
-                <MapPin className="w-4 h-4" /> Confirm Check In
+                {gpsState === "LOCATING" ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>लोकेशन जांच रहे हैं...</span>
+                  </>
+                ) : gpsState === "VERIFIED" ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>✓ Confirm Check In ({distanceMeters}m)</span>
+                  </>
+                ) : gpsState === "OUTSIDE_GEOFENCE" ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>🔒 चेक-इन ब्लॉक है ({distanceMeters}m दूर)</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>🔒 GPS अनुमति आवश्यक</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

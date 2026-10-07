@@ -54,7 +54,7 @@ export default function SettingsPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 1-CLICK ONE-TAP GPS DETECTION
+  // 1-CLICK REAL HIGH-ACCURACY GPS DETECTION
   const handleAutoDetectLocation = () => {
     setIsDetectingLocation(true);
 
@@ -80,23 +80,22 @@ export default function SettingsPage() {
 
         // Auto-save to store
         updateShopSettingsInStore({ latitude: lat, longitude: lng });
-        showToast(`✓ Shop coordinates detected via GPS: ${lat}, ${lng} (Accuracy: ±${acc}m) & Saved!`);
+        showToast(`✓ Shop GPS Locked: ${lat}, ${lng} (Accuracy: ±${acc}m) & Saved!`);
       },
       (error) => {
         setIsDetectingLocation(false);
-        // Fallback demo coordinates with notification
-        const fallbackLat = 26.9124;
-        const fallbackLng = 75.7873;
-        setSettings((prev) => ({
-          ...prev,
-          latitude: fallbackLat,
-          longitude: fallbackLng,
-        }));
-        setGpsAccuracyM(12);
-        updateShopSettingsInStore({ latitude: fallbackLat, longitude: fallbackLng });
-        showToast(`✓ GPS Location locked to shop premises (${fallbackLat}, ${fallbackLng})`);
+        let msg = "Could not detect GPS location.";
+        if (error.code === error.PERMISSION_DENIED) {
+          msg = "Location permission denied. Please allow Location/GPS access in your browser or phone settings.";
+        } else if (error.code === error.TIMEOUT) {
+          msg = "GPS request timed out. Please turn on device Location with High Accuracy and retry.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          msg = "GPS position unavailable. Please ensure GPS is enabled on this device.";
+        }
+        alert(`⚠️ GPS Detection Error:\n${msg}\n\nYou can also enter the exact Latitude and Longitude coordinates manually below.`);
+        showToast(`⚠️ GPS detection failed: ${msg}`);
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -308,6 +307,18 @@ export default function SettingsPage() {
                     {settings.geofenceRadiusM} meters
                   </span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-emerald-100/80">
+                <span className="text-emerald-900/80 font-medium">Verify shop GPS pin location:</span>
+                <a
+                  href={`https://www.google.com/maps?q=${settings.latitude},${settings.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1 cursor-pointer"
+                >
+                  📍 Open Pin in Google Maps ↗
+                </a>
               </div>
             </div>
 
