@@ -17,7 +17,7 @@ import {
   Sliders,
   Check,
 } from "lucide-react";
-import { getCRMStore, updateShopSettingsInStore, resetCRMStoreToClean, ShopSettings } from "@/lib/store";
+import { getCRMStore, updateShopSettingsInStore, resetCRMStoreToClean, subscribeToCRMStore, ShopSettings } from "@/lib/store";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<ShopSettings>({
@@ -68,6 +68,13 @@ export default function SettingsPage() {
     if (store && store.settings) {
       setSettings(store.settings);
     }
+    const unsub = subscribeToCRMStore(() => {
+      const updated = getCRMStore();
+      if (updated && updated.settings) {
+        setSettings(updated.settings);
+      }
+    });
+    return () => unsub();
   }, []);
 
   const showToast = (msg: string) => {
@@ -343,6 +350,47 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* 1-Tap Verified Shop Roof Preset for Mahesh Enterprises / Tata Tiscon */}
+            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <Store size={15} className="text-amber-600" />
+                  महेश स्टील्स (Tata Tiscon, कुचामन रोड) — 1-क्लिक वेरिफाइड पिनपॉइंट काउंटर लॉक
+                </span>
+                <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-full">
+                  Verified Roof
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed">
+                यह आपके मैप में दिख रही असली <strong>"Tata Tiscon Mahesh Steels"</strong> दुकान की छत/काउंटर का 100% सटीक पिन है (सड़क वाला लाल डॉट नहीं):
+              </p>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+                <div className="font-mono text-xs font-bold text-amber-950 bg-white/80 border border-amber-200 px-3 py-2 rounded-xl">
+                  📍 Lat: <span className="text-emerald-700">26.892728</span>, Lng: <span className="text-emerald-700">74.769150</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lat = 26.892728;
+                    const lng = 74.769150;
+                    setSettings((prev) => ({
+                      ...prev,
+                      shopName: "Mahesh Enterprises (Tata Tiscon)",
+                      latitude: lat,
+                      longitude: lng,
+                    }));
+                    setGpsAccuracyM(1);
+                    updateShopSettingsInStore({ shopName: "Mahesh Enterprises (Tata Tiscon)", latitude: lat, longitude: lng });
+                    showToast("✓ Mahesh Enterprises (Tata Tiscon) exact roof locked & Synced!");
+                  }}
+                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Check size={14} />
+                  <span>Lock Mahesh Steels Exact Roof (1-Tap)</span>
+                </button>
+              </div>
+            </div>
+
             {/* Quick Paste 100% Pinpoint Tool */}
             <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl space-y-2.5">
               <div className="flex items-center justify-between">
@@ -382,9 +430,13 @@ export default function SettingsPage() {
                 <label className="text-xs font-bold text-slate-700">Latitude</label>
                 <input
                   type="number"
-                  step="0.000001"
+                  step="any"
                   value={settings.latitude}
                   onChange={(e) => setSettings({ ...settings, latitude: parseFloat(e.target.value) || 0 })}
+                  onBlur={() => {
+                    updateShopSettingsInStore({ latitude: settings.latitude });
+                    showToast("✓ Latitude updated & saved!");
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white"
                 />
               </div>
@@ -393,9 +445,13 @@ export default function SettingsPage() {
                 <label className="text-xs font-bold text-slate-700">Longitude</label>
                 <input
                   type="number"
-                  step="0.000001"
+                  step="any"
                   value={settings.longitude}
                   onChange={(e) => setSettings({ ...settings, longitude: parseFloat(e.target.value) || 0 })}
+                  onBlur={() => {
+                    updateShopSettingsInStore({ longitude: settings.longitude });
+                    showToast("✓ Longitude updated & saved!");
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white"
                 />
               </div>
@@ -415,6 +471,10 @@ export default function SettingsPage() {
                     step="1"
                     value={settings.geofenceRadiusM}
                     onChange={(e) => setSettings({ ...settings, geofenceRadiusM: Math.max(1, parseInt(e.target.value) || 0) })}
+                    onBlur={() => {
+                      updateShopSettingsInStore({ geofenceRadiusM: settings.geofenceRadiusM });
+                      showToast("✓ Geofence radius updated & saved!");
+                    }}
                     placeholder="Enter precise radius (e.g. 10, 15, 25, 40)"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 pr-16"
                   />
@@ -429,7 +489,11 @@ export default function SettingsPage() {
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => setSettings({ ...settings, geofenceRadiusM: preset })}
+                      onClick={() => {
+                        setSettings({ ...settings, geofenceRadiusM: preset });
+                        updateShopSettingsInStore({ geofenceRadiusM: preset });
+                        showToast(`✓ Radius set to ${preset}m & saved!`);
+                      }}
                       className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all cursor-pointer ${
                         settings.geofenceRadiusM === preset
                           ? "bg-emerald-600 text-white shadow-2xs"
