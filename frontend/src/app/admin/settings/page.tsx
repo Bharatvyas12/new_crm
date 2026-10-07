@@ -41,6 +41,27 @@ export default function SettingsPage() {
   const [gpsAccuracyM, setGpsAccuracyM] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"SHOP_PROFILE" | "GEOFENCE" | "TIMINGS">("SHOP_PROFILE");
+  const [pasteInput, setPasteInput] = useState("");
+
+  const handleApplyPastedCoords = () => {
+    if (!pasteInput.trim()) return;
+    const match = pasteInput.match(/(-?\d+\.\d{3,})[,\s/]+(-?\d+\.\d{3,})/);
+    if (match) {
+      const lat = parseFloat(parseFloat(match[1]).toFixed(6));
+      const lng = parseFloat(parseFloat(match[2]).toFixed(6));
+      setSettings((prev) => ({
+        ...prev,
+        latitude: lat,
+        longitude: lng,
+      }));
+      setGpsAccuracyM(2);
+      updateShopSettingsInStore({ latitude: lat, longitude: lng });
+      setPasteInput("");
+      showToast(`✓ Pinpoint coordinates locked: ${lat}, ${lng} & Saved!`);
+    } else {
+      alert("Please paste valid coordinates (e.g. 26.892485, 74.768920) or Google Maps link.");
+    }
+  };
 
   useEffect(() => {
     const store = getCRMStore();
@@ -319,6 +340,39 @@ export default function SettingsPage() {
                 >
                   📍 Open Pin in Google Maps ↗
                 </a>
+              </div>
+            </div>
+
+            {/* Quick Paste 100% Pinpoint Tool */}
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-blue-600" />
+                  100% पिनपॉइंट (Pinpoint) लोकेशन — Google Maps से सीधे पेस्ट करें
+                </span>
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-extrabold px-2 py-0.5 rounded-full">
+                  Zero Error
+                </span>
+              </div>
+              <p className="text-xs text-blue-800 leading-relaxed">
+                यदि इनडोर छत के कारण ऑटो-डिटेक्ट थोड़ा आगे-पीछे दिखे, तो Google Maps में अपनी दुकान (Tata Tiscon / महेश स्टील्स) की छत पर <strong>Long Press (दबाकर रखें)</strong> या <strong>Right-Click</strong> करें और 2 नंबर कॉपी करके यहाँ पेस्ट करें:
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  placeholder="उदा. 26.892485, 74.768920 या Google Maps लिंक पेस्ट करें..."
+                  value={pasteInput}
+                  onChange={(e) => setPasteInput(e.target.value)}
+                  className="flex-1 bg-white border border-blue-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyPastedCoords}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <MapPin size={13} />
+                  <span>Apply & Lock Pin</span>
+                </button>
               </div>
             </div>
 
