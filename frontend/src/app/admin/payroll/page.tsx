@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Plus,
   Banknote,
@@ -18,9 +19,18 @@ import {
   AlertCircle,
   Building,
   User,
+  Users,
+  RefreshCw,
 } from "lucide-react";
+import {
+  getCRMStore,
+  subscribeToCRMStore,
+  addLedgerEntryInStore,
+  CRMStoreData,
+  Employee,
+} from "@/lib/store";
 
-interface EmployeeSalaryRecord {
+export interface EmployeeSalaryRecord {
   employeeId: string;
   name: string;
   code: string;
@@ -37,113 +47,103 @@ interface EmployeeSalaryRecord {
   netPay: number;
   bankAccount: string;
   ifsc: string;
+  upiId?: string;
   status: "CALCULATED" | "APPROVED" | "PAID";
 }
 
-const defaultSalaryRecords: EmployeeSalaryRecord[] = [
-  {
-    employeeId: "1",
-    name: "Bharat vyas",
-    code: "E001",
-    department: "Operations",
-    designation: "Supervisor",
-    baseSalary: 35000,
-    workedDays: 26,
-    totalDaysInMonth: 26,
-    overtimeHours: 12,
-    overtimePay: 2400,
-    unpaidLeaveDays: 0,
-    leaveDeductions: 0,
-    advanceDeduction: 2000,
-    netPay: 35400,
-    bankAccount: "112233445566",
-    ifsc: "SBIN0004321",
-    status: "PAID",
-  },
-  {
-    employeeId: "2",
-    name: "Demo Employee",
-    code: "EMP001",
-    department: "Delivery",
-    designation: "Rider",
-    baseSalary: 25000,
-    workedDays: 25,
-    totalDaysInMonth: 26,
-    overtimeHours: 18,
-    overtimePay: 2700,
-    unpaidLeaveDays: 1,
-    leaveDeductions: 961,
-    advanceDeduction: 2500,
-    netPay: 24239,
-    bankAccount: "556677889900",
-    ifsc: "PUNB0005566",
-    status: "PAID",
-  },
-  {
-    employeeId: "3",
-    name: "Priya Sharma",
-    code: "EMP002",
-    department: "Sales",
-    designation: "Senior Sales Lead",
-    baseSalary: 32000,
-    workedDays: 26,
-    totalDaysInMonth: 26,
-    overtimeHours: 6,
-    overtimePay: 1100,
-    unpaidLeaveDays: 0,
-    leaveDeductions: 0,
-    advanceDeduction: 1000,
-    netPay: 32100,
-    bankAccount: "998877665544",
-    ifsc: "HDFC0001234",
-    status: "PAID",
-  },
-  {
-    employeeId: "4",
-    name: "Rahul Sharma",
-    code: "EMP512",
-    department: "Sales",
-    designation: "Sales Executive",
-    baseSalary: 28000,
-    workedDays: 24,
-    totalDaysInMonth: 26,
-    overtimeHours: 4,
-    overtimePay: 650,
-    unpaidLeaveDays: 2,
-    leaveDeductions: 2154,
-    advanceDeduction: 0,
-    netPay: 26496,
-    bankAccount: "332211445566",
-    ifsc: "ICIC0003344",
-    status: "PAID",
-  },
-  {
-    employeeId: "5",
-    name: "Suresh Jain",
-    code: "EMPB87",
-    department: "Accounts",
-    designation: "Senior Accountant",
-    baseSalary: 42000,
-    workedDays: 26,
-    totalDaysInMonth: 26,
-    overtimeHours: 0,
-    overtimePay: 0,
-    unpaidLeaveDays: 0,
-    leaveDeductions: 0,
-    advanceDeduction: 0,
-    netPay: 42000,
-    bankAccount: "778899001122",
-    ifsc: "AXIS0009988",
-    status: "PAID",
-  },
-];
+function computeLivePayrollRecords(store: CRMStoreData, currentMonthStr: string): EmployeeSalaryRecord[] {
+  // Filter out system administrator so payroll covers operational staff
+  const staff = (store.employees || []).filter(
+    (e) => !e.code.includes("ADMIN") && e.department !== "Management"
+  );
+
+  return staff.map((emp) => {
+    const empCode = emp.code.trim().toUpperCase();
+
+    // 1. Attendance calculation from store
+    const empAttendance = (store.attendance || []).filter(
+      (a) => a.employeeCode.trim().toUpperCase() === empCode
+    );
+    const presentRecords = empAttendance.filter(
+      (a) => a.status === "Present" || a.status === "Late"
+    );
+    
+    // Check if active today
+    const shift = store.activeShifts ? store.activeShifts[emp.code] : undefined;
+    const isWorkingToday = shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK");
+    const workedDays = isWorkingToday && !presentRecords.some(r => r.date === shift.date) 
+      ? presentRecords.length + 1 
+      : presentRecords.length;
+
+    const totalDaysInMonth = 26;
+
+    // 2. Overtime calculation
+    const overtimeHours = empAttendance.reduce((sum, a) => sum + (Number(a.overtimeHours) || 0), 0);
+    const baseSalary = Number(emp.baseSalary) || 25000;
+    const dailyRate = Math.round(baseSalary / totalDaysInMonth);
+    const hourlyRate = Math.round(dailyRate / 9);
+    const overtimePay = Math.round(overtimeHours * (hourlyRate * 1.5));
+
+    // 3. Unpaid leave deductions
+    const empLeaves = (store.leaves || []).filter(
+      (l) => l.employeeCode.trim().toUpperCase() === empCode && l.status === "APPROVED"
+    );
+    const unpaidLeaveDays = empLeaves
+      .filter((l) => l.leaveType === "Unpaid Leave")
+      .reduce((sum, l) => sum + (Number(l.days) || 0), 0);
+    const leaveDeductions = unpaidLeaveDays * dailyRate;
+
+    // 4. Advance recovery auto-deduction
+    const empAdvances = (store.advances || []).filter(
+      (adv) => (adv.code || adv.employeeId || "").trim().toUpperCase() === empCode && adv.status === "Disbursed"
+    );
+    const advanceDeduction = empAdvances
+      .filter((adv) => adv.mode === "SALARY_DEDUCTION")
+      .reduce((sum, adv) => sum + (Number(adv.amount) || 0), 0);
+
+    const netPay = Math.max(0, baseSalary + overtimePay - leaveDeductions - advanceDeduction);
+
+    return {
+      employeeId: emp.id,
+      name: emp.name,
+      code: emp.code,
+      department: emp.department || "Operations",
+      designation: emp.designation || "Staff",
+      baseSalary,
+      workedDays,
+      totalDaysInMonth,
+      overtimeHours,
+      overtimePay,
+      unpaidLeaveDays,
+      leaveDeductions,
+      advanceDeduction,
+      netPay,
+      bankAccount: emp.bankAccount || "—",
+      ifsc: emp.bankIfsc || "—",
+      upiId: emp.upiId || "",
+      status: "CALCULATED",
+    };
+  });
+}
 
 export default function PayrollPage() {
-  const [selectedMonth, setSelectedMonth] = useState("September 2026");
-  const [records, setRecords] = useState<EmployeeSalaryRecord[]>(defaultSalaryRecords);
-  const [payrollStatus, setPayrollStatus] = useState<"DRAFT" | "APPROVED" | "PAID">("PAID");
+  const [selectedMonth, setSelectedMonth] = useState("October 2026 (Live Current)");
+  const [records, setRecords] = useState<EmployeeSalaryRecord[]>([]);
+  const [payrollStatus, setPayrollStatus] = useState<"DRAFT" | "APPROVED" | "PAID">("DRAFT");
   const [viewingPayslip, setViewingPayslip] = useState<EmployeeSalaryRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const loadPayroll = () => {
+    const store = getCRMStore();
+    const liveRecords = computeLivePayrollRecords(store, selectedMonth);
+    setRecords(liveRecords);
+  };
+
+  useEffect(() => {
+    loadPayroll();
+    const unsubscribe = subscribeToCRMStore(loadPayroll);
+    return () => unsubscribe();
+  }, [selectedMonth]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -151,34 +151,95 @@ export default function PayrollPage() {
   };
 
   const handleRunNewPayroll = () => {
-    setSelectedMonth("October 2026 (Live Current Run)");
+    loadPayroll();
     setPayrollStatus("DRAFT");
-    const updated = records.map((r) => ({
-      ...r,
-      status: "CALCULATED" as const,
-    }));
-    setRecords(updated);
-    showToast("October 2026 Payroll calculated based on live attendance & advance deductions!");
+    showToast("✓ Payroll refreshed and recalculated using real-time attendance, shifts & advances!");
   };
 
   const handleApprovePayroll = () => {
     setPayrollStatus("APPROVED");
-    const updated = records.map((r) => ({
-      ...r,
-      status: "APPROVED" as const,
-    }));
-    setRecords(updated);
-    showToast("Payroll approved! Ready for payout disbursement.");
+    setRecords((prev) => prev.map((r) => ({ ...r, status: "APPROVED" })));
+    showToast("✓ Payroll approved! Ready for payout disbursement.");
   };
 
   const handleDisbursePayroll = () => {
     setPayrollStatus("PAID");
-    const updated = records.map((r) => ({
-      ...r,
-      status: "PAID" as const,
-    }));
-    setRecords(updated);
-    showToast("Salaries disbursed & recorded in Double-Entry Financial Ledger!");
+    const now = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+
+    // Auto-record real entries into store ledger
+    records.forEach((rec) => {
+      addLedgerEntryInStore({
+        employeeName: rec.name,
+        employeeCode: rec.code,
+        type: "SALARY_CREDIT",
+        amount: rec.netPay,
+        paymentMode: "Bank Transfer",
+        description: `Monthly Salary Disbursed for ${selectedMonth} (Net ₹${rec.netPay.toLocaleString()})`,
+        date: now,
+      });
+    });
+
+    setRecords((prev) => prev.map((r) => ({ ...r, status: "PAID" })));
+    showToast(`✓ ₹${records.reduce((a, b) => a + b.netPay, 0).toLocaleString()} disbursed and auto-posted to Ledger!`);
+  };
+
+  // CSV Export for Accountant / Banker
+  const handleExportCSV = () => {
+    if (records.length === 0) {
+      showToast("No employee records to export.");
+      return;
+    }
+
+    const headers = [
+      "Employee Code",
+      "Employee Name",
+      "Department",
+      "Designation",
+      "Base Salary",
+      "Days Worked",
+      "Total Days",
+      "Overtime Hours",
+      "Overtime Pay",
+      "Unpaid Leave Days",
+      "Leave Deductions",
+      "Advance Deductions",
+      "Net Payable",
+      "Bank Account",
+      "IFSC Code",
+      "UPI ID",
+      "Status",
+    ];
+
+    const rows = records.map((r) => [
+      `"${r.code}"`,
+      `"${r.name}"`,
+      `"${r.department}"`,
+      `"${r.designation}"`,
+      r.baseSalary,
+      r.workedDays,
+      r.totalDaysInMonth,
+      r.overtimeHours,
+      r.overtimePay,
+      r.unpaidLeaveDays,
+      r.leaveDeductions,
+      r.advanceDeduction,
+      r.netPay,
+      `"${r.bankAccount}"`,
+      `"${r.ifsc}"`,
+      `"${r.upiId || ""}"`,
+      `"${r.status}"`,
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Payroll_${selectedMonth.replace(/\s+/g, "_")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast("✓ Real Payroll CSV downloaded successfully!");
   };
 
   // KPIs
@@ -203,27 +264,36 @@ export default function PayrollPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Monthly Payroll Engine</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Automated net salary computation based on worked hours, overtime, unpaid leave deductions, and advances.
+          <p className="text-sm text-slate-600 mt-0.5">
+            Automated net salary computation based on real live workforce attendance, overtime, unpaid leave, and advance repayments.
           </p>
         </div>
-        <button
-          onClick={handleRunNewPayroll}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
-        >
-          <Plus size={18} />
-          <span>+ Process Current Month Payroll</span>
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={handleRunNewPayroll}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] border border-blue-200 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+          >
+            <RefreshCw size={14} />
+            <span>Recalculate Live</span>
+          </button>
+          <Link
+            href="/admin/employees"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            <Users size={14} />
+            <span>Manage Staff Salaries</span>
+          </Link>
+        </div>
       </div>
 
       {/* Explanation Banner */}
       <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 text-xs text-blue-900 flex items-start gap-3">
         <DollarSign className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <span className="font-bold">How the Payroll Engine Works:</span>
+          <span className="font-bold">Automated Live Computation Formula:</span>
           <p className="text-blue-800 leading-relaxed">
-            <code>Net Payable = Base Salary + Overtime Pay - Unpaid Leave Loss - Advance Repayments</code>.
-            Once finalized and marked as paid, transactions are auto-posted to the master Double-Entry Financial Ledger.
+            <code>Net Payable = Base Salary + Overtime Pay - Unpaid Leave Loss - Disbursed Advance Deductions</code>.
+            All numbers are dynamically calculated from your real CRM employees, attendance logs, and financial advances. Disbursed salaries auto-post to the Double-Entry Ledger.
           </p>
         </div>
       </div>
@@ -231,14 +301,25 @@ export default function PayrollPage() {
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Selected Period
-          </span>
-          <div className="text-lg font-bold text-slate-900 mt-2 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-blue-600" />
-            {selectedMonth}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Selected Period
+            </span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none"
+            >
+              <option value="October 2026 (Live Current)">Oct 2026 (Live)</option>
+              <option value="September 2026">Sep 2026</option>
+              <option value="August 2026">Aug 2026</option>
+            </select>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">{records.length} Staff Members</div>
+          <div className="text-base font-bold text-slate-900 mt-2 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            {selectedMonth.split(" ")[0]} 2026
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1">{records.length} Active Staff Enrolled</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
@@ -248,7 +329,7 @@ export default function PayrollPage() {
           <div className="text-2xl font-bold text-slate-900 font-mono mt-2">
             ₹{grossTotal.toLocaleString()}
           </div>
-          <div className="text-[11px] text-emerald-600 font-semibold mt-1">Earnings before deduction</div>
+          <div className="text-[11px] text-emerald-600 font-semibold mt-1">Earnings before deductions</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
@@ -306,80 +387,100 @@ export default function PayrollPage() {
               onClick={handleDisbursePayroll}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
             >
-              💸 Mark as Paid & Disburse
+              💸 Mark as Paid & Disburse to Ledger
             </button>
           )}
 
           <button
-            onClick={() => showToast("Exporting Excel Payroll Sheet... Download started.")}
+            onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
           >
-            <Download size={14} /> Export CSV
+            <Download size={14} /> Export Real CSV
           </button>
         </div>
       </div>
 
-      {/* Salary Breakdown Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-              <tr>
-                <th className="py-3.5 px-5">Employee</th>
-                <th className="py-3.5 px-5">Department</th>
-                <th className="py-3.5 px-5 text-right">Base Salary</th>
-                <th className="py-3.5 px-5 text-center">Days Worked</th>
-                <th className="py-3.5 px-5 text-right">Overtime Pay</th>
-                <th className="py-3.5 px-5 text-right">Leave Loss</th>
-                <th className="py-3.5 px-5 text-right">Advance Ded.</th>
-                <th className="py-3.5 px-5 text-right">Net Payable</th>
-                <th className="py-3.5 px-5 text-right">Payslip</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
-              {records.map((rec) => (
-                <tr key={rec.employeeId} className="hover:bg-blue-50/30 transition-colors">
-                  <td className="py-3.5 px-5">
-                    <div className="font-semibold text-slate-900">{rec.name}</div>
-                    <div className="text-xs font-mono text-[#1a73e8]">{rec.code}</div>
-                  </td>
-                  <td className="py-3.5 px-5">
-                    <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                      {rec.department}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-slate-900">
-                    ₹{rec.baseSalary.toLocaleString()}
-                  </td>
-                  <td className="py-3.5 px-5 text-center font-mono text-xs">
-                    {rec.workedDays}/{rec.totalDaysInMonth}
-                  </td>
-                  <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-emerald-600">
-                    +{rec.overtimePay ? `₹${rec.overtimePay.toLocaleString()}` : "—"}
-                  </td>
-                  <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-red-600">
-                    {rec.leaveDeductions ? `-₹${rec.leaveDeductions.toLocaleString()}` : "—"}
-                  </td>
-                  <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-amber-600">
-                    {rec.advanceDeduction ? `-₹${rec.advanceDeduction.toLocaleString()}` : "—"}
-                  </td>
-                  <td className="py-3.5 px-5 text-right font-mono font-extrabold text-sm text-slate-900">
-                    ₹{rec.netPay.toLocaleString()}
-                  </td>
-                  <td className="py-3.5 px-5 text-right">
-                    <button
-                      onClick={() => setViewingPayslip(rec)}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      <FileText size={13} /> View Slip
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Salary Breakdown Table or Clean Empty State */}
+      {records.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-xs space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+            <Users size={24} />
+          </div>
+          <h3 className="text-base font-bold text-slate-900">No Staff Employees Enrolled</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            There are currently no active operational employees in your directory. Add employees and their base salary to automatically compute monthly payroll.
+          </p>
+          <div className="pt-2">
+            <Link
+              href="/admin/employees"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            >
+              <Plus size={14} /> Add Employees Now
+            </Link>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                <tr>
+                  <th className="py-3.5 px-5">Employee</th>
+                  <th className="py-3.5 px-5">Department</th>
+                  <th className="py-3.5 px-5 text-right">Base Salary</th>
+                  <th className="py-3.5 px-5 text-center">Days Worked</th>
+                  <th className="py-3.5 px-5 text-right">Overtime Pay</th>
+                  <th className="py-3.5 px-5 text-right">Leave Loss</th>
+                  <th className="py-3.5 px-5 text-right">Advance Ded.</th>
+                  <th className="py-3.5 px-5 text-right">Net Payable</th>
+                  <th className="py-3.5 px-5 text-right">Payslip</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {records.map((rec) => (
+                  <tr key={rec.employeeId} className="hover:bg-blue-50/30 transition-colors">
+                    <td className="py-3.5 px-5">
+                      <div className="font-semibold text-slate-900">{rec.name}</div>
+                      <div className="text-xs font-mono text-[#1a73e8]">{rec.code}</div>
+                    </td>
+                    <td className="py-3.5 px-5">
+                      <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                        {rec.department}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-slate-900">
+                      ₹{rec.baseSalary.toLocaleString()}
+                    </td>
+                    <td className="py-3.5 px-5 text-center font-mono text-xs">
+                      {rec.workedDays}/{rec.totalDaysInMonth}
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-emerald-600">
+                      +{rec.overtimePay ? `₹${rec.overtimePay.toLocaleString()}` : "—"}
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-red-600">
+                      {rec.leaveDeductions ? `-₹${rec.leaveDeductions.toLocaleString()}` : "—"}
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-amber-600">
+                      {rec.advanceDeduction ? `-₹${rec.advanceDeduction.toLocaleString()}` : "—"}
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-mono font-extrabold text-sm text-slate-900">
+                      ₹{rec.netPay.toLocaleString()}
+                    </td>
+                    <td className="py-3.5 px-5 text-right">
+                      <button
+                        onClick={() => setViewingPayslip(rec)}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <FileText size={13} /> View Slip
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* FORMAL PAYSLIP MODAL */}
       {viewingPayslip && (
@@ -413,6 +514,7 @@ export default function PayrollPage() {
                 <div className="text-right font-mono text-[11px] text-slate-500">
                   <div>Bank: {viewingPayslip.bankAccount}</div>
                   <div>IFSC: {viewingPayslip.ifsc}</div>
+                  {viewingPayslip.upiId && <div>UPI: {viewingPayslip.upiId}</div>}
                 </div>
               </div>
 
@@ -425,21 +527,27 @@ export default function PayrollPage() {
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
+                  <span>Days Worked ({viewingPayslip.workedDays}/{viewingPayslip.totalDaysInMonth}):</span>
+                  <span className="font-mono font-bold text-slate-700">
+                    {viewingPayslip.workedDays} days
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-600">
                   <span>Overtime Pay ({viewingPayslip.overtimeHours} hrs):</span>
                   <span className="font-mono font-bold text-emerald-600">
-                    +₹{viewingPayslip.overtimePay.toLocaleString()}
+                    +{viewingPayslip.overtimePay ? `₹${viewingPayslip.overtimePay.toLocaleString()}` : "₹0"}
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Unpaid Leave Deductions ({viewingPayslip.unpaidLeaveDays} days):</span>
                   <span className="font-mono font-bold text-red-600">
-                    -₹{viewingPayslip.leaveDeductions.toLocaleString()}
+                    -{viewingPayslip.leaveDeductions ? `₹${viewingPayslip.leaveDeductions.toLocaleString()}` : "₹0"}
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Advance Recovery Auto-Deduction:</span>
                   <span className="font-mono font-bold text-amber-600">
-                    -₹{viewingPayslip.advanceDeduction.toLocaleString()}
+                    -{viewingPayslip.advanceDeduction ? `₹${viewingPayslip.advanceDeduction.toLocaleString()}` : "₹0"}
                   </span>
                 </div>
               </div>
@@ -454,7 +562,11 @@ export default function PayrollPage() {
 
             <div className="flex items-center justify-between pt-2">
               <button
-                onClick={() => alert("Printing formal PDF payslip...")}
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.print();
+                  }
+                }}
                 className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 <Printer size={14} /> Print / Save PDF

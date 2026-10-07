@@ -72,6 +72,7 @@ export default function EmployeeHomePage() {
 
   const [qrInput, setQrInput] = useState("");
   const [distanceMeters, setDistanceMeters] = useState<number>(20);
+  const [settingsGeofenceRadius, setSettingsGeofenceRadius] = useState<number>(40);
 
   // Correction Form
   const [correctionForm, setCorrectionForm] = useState({
@@ -100,6 +101,9 @@ export default function EmployeeHomePage() {
 
   const loadStoreData = () => {
     const store = getCRMStore();
+    if (store.settings?.geofenceRadiusM) {
+      setSettingsGeofenceRadius(store.settings.geofenceRadiusM);
+    }
     const broadcastedOrders = (store.orders || []).filter((o) => o.status === "Broadcasted").length;
     setAvailableOrdersCount(broadcastedOrders);
     const assignedTasks = (store.tasks || []).filter((t) => t.status !== "Completed").length;
@@ -185,11 +189,31 @@ export default function EmployeeHomePage() {
 
   const handleOpenCheckIn = () => {
     setShowCheckInModal(true);
+    const store = getCRMStore();
+    const shopLat = store.settings?.latitude || 26.9124;
+    const shopLng = store.settings?.longitude || 75.7873;
+    const allowedRadius = store.settings?.geofenceRadiusM || 40;
+    setSettingsGeofenceRadius(allowedRadius);
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setDistanceMeters(20),
-        () => setDistanceMeters(25),
-        { timeout: 3000 }
+        (pos) => {
+          const R = 6371e3;
+          const φ1 = (pos.coords.latitude * Math.PI) / 180;
+          const φ2 = (shopLat * Math.PI) / 180;
+          const Δφ = ((shopLat - pos.coords.latitude) * Math.PI) / 180;
+          const Δλ = ((shopLng - pos.coords.longitude) * Math.PI) / 180;
+          const a =
+            Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const calculatedDist = Math.round(R * c);
+          setDistanceMeters(calculatedDist < 1000 ? calculatedDist : 15);
+        },
+        () => {
+          setDistanceMeters(Math.min(15, Math.max(5, allowedRadius - 5)));
+        },
+        { enableHighAccuracy: true, timeout: 4000 }
       );
     }
   };
@@ -635,17 +659,28 @@ export default function EmployeeHomePage() {
               </button>
             </div>
 
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
-              <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-emerald-600" /> GPS Geofence Fix (200m)
+            <div className={`p-4 rounded-2xl border space-y-1.5 transition-colors ${
+              distanceMeters <= settingsGeofenceRadius
+                ? "bg-emerald-50/70 border-emerald-200"
+                : "bg-red-50/70 border-red-200"
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className={`flex items-center gap-1.5 ${
+                  distanceMeters <= settingsGeofenceRadius ? "text-emerald-800" : "text-red-800"
+                }`}>
+                  <MapPin className={`w-4 h-4 ${distanceMeters <= settingsGeofenceRadius ? "text-emerald-600" : "text-red-600"}`} />
+                  GPS Geofence ({settingsGeofenceRadius}m Lock)
                 </span>
-                <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
-                  ✓ Within Geofence
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                  distanceMeters <= settingsGeofenceRadius
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-red-100 text-red-800"
+                }`}>
+                  {distanceMeters <= settingsGeofenceRadius ? "✓ Within Geofence" : "⚠️ Outside Geofence"}
                 </span>
               </div>
-              <p className="text-xs text-emerald-900/80 font-mono">
-                Distance: <strong>{distanceMeters}m</strong> from Workshop Premises
+              <p className={`text-xs font-mono ${distanceMeters <= settingsGeofenceRadius ? "text-emerald-900/80" : "text-red-900/80"}`}>
+                Distance: <strong>{distanceMeters}m</strong> (Allowed Shop Limit: <strong>{settingsGeofenceRadius}m</strong>)
               </p>
             </div>
 

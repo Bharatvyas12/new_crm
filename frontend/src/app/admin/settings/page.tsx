@@ -335,18 +335,49 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Geofence Radius (Meters)</label>
-                <select
-                  value={[25, 40, 60, 100].includes(settings.geofenceRadiusM) ? settings.geofenceRadiusM : 40}
-                  onChange={(e) => setSettings({ ...settings, geofenceRadiusM: Number(e.target.value) })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:bg-white"
-                >
-                  <option value={25}>25 Meters (Immediate shop floor / Counter)</option>
-                  <option value={40}>40 Meters (Inside premises — Recommended)</option>
-                  <option value={60}>60 Meters (Shop & immediate perimeter)</option>
-                  <option value={100}>100 Meters (Maximum allowed limit)</option>
-                </select>
+              <div className="space-y-1.5 sm:col-span-3 lg:col-span-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">Custom Geofence Radius (Meters)</label>
+                  <span className="text-[11px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    {settings.geofenceRadiusM}m Lock
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="5"
+                    max="1000"
+                    step="1"
+                    value={settings.geofenceRadiusM}
+                    onChange={(e) => setSettings({ ...settings, geofenceRadiusM: Math.max(1, parseInt(e.target.value) || 0) })}
+                    placeholder="Enter precise radius (e.g. 10, 15, 25, 40)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 pr-16"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono pointer-events-none">
+                    meters
+                  </span>
+                </div>
+                {/* Quick Presets for 1-click convenience */}
+                <div className="flex flex-wrap items-center gap-1 pt-1">
+                  <span className="text-[10px] text-slate-400 font-medium">Presets:</span>
+                  {[10, 15, 25, 40, 60, 100].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setSettings({ ...settings, geofenceRadiusM: preset })}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all cursor-pointer ${
+                        settings.geofenceRadiusM === preset
+                          ? "bg-emerald-600 text-white shadow-2xs"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {preset}m
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 pt-0.5 leading-tight">
+                  Type any exact custom meters for high-precision GPS boundary. Staff must be within this distance to check in.
+                </p>
               </div>
             </div>
           </div>

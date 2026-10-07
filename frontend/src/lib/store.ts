@@ -42,6 +42,8 @@ export interface EmployeeItem {
   sickLeaves: number;
 }
 
+export type Employee = EmployeeItem;
+
 export interface AdvanceRequest {
   id: string;
   employeeId: string;
@@ -618,6 +620,24 @@ export const updateShopSettingsInStore = (settings: Partial<ShopSettings>) => {
   };
   saveCRMStore(store);
   return store.settings;
+};
+
+export const addLedgerEntryInStore = (entry: Omit<LedgerEntry, "id" | "runningBalance">) => {
+  const store = getCRMStore();
+  const lastLedger = store.ledger.filter((l) => l.employeeCode === entry.employeeCode).pop();
+  const prevBalance = lastLedger ? lastLedger.runningBalance : 0;
+  const runningBalance = entry.type.includes("CREDIT") || entry.type.includes("DISBURSEMENT")
+    ? prevBalance + entry.amount
+    : prevBalance - entry.amount;
+
+  const newEntry: LedgerEntry = {
+    id: `led-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    ...entry,
+    runningBalance,
+  };
+  store.ledger = [newEntry, ...store.ledger];
+  saveCRMStore(store);
+  return newEntry;
 };
 
 // ORDER ACTIONS
