@@ -66,6 +66,13 @@ def _get_initial_clean_store() -> Dict[str, Any]:
         "corrections": [],
         "leaves": [],
         "complaints": [],
+        "roles": [
+            {"id": "1", "name": "ADMIN", "isAdmin": True, "usersCount": 1, "permissions": ["*"]},
+            {"id": "2", "name": "SUPERVISOR", "isAdmin": False, "usersCount": 3, "permissions": ["attendance.read.all", "attendance.qr.generate", "attendance.corrections.approve", "orders.read.all", "orders.broadcast", "orders.edit", "tasks.create", "tasks.review", "leaves.read.all", "leaves.approve"]},
+            {"id": "3", "name": "EMPLOYEE", "isAdmin": False, "usersCount": 18, "permissions": ["attendance.checkin.self", "orders.claim", "orders.read.self", "orders.broadcast", "tasks.read.self", "tasks.submit.self", "leaves.apply.self", "ledger.read.self"]},
+            {"id": "4", "name": "ACCOUNTS_LEAD", "isAdmin": False, "usersCount": 2, "permissions": ["attendance.read.all", "ledger.read.all", "ledger.post_entry", "payroll.run", "payroll.approve", "leaves.read.all"]},
+            {"id": "5", "name": "DISPATCH_MANAGER", "isAdmin": False, "usersCount": 2, "permissions": ["orders.read.all", "orders.broadcast", "orders.edit", "orders.pod.verify", "attendance.read.all"]}
+        ],
     }
 
 
@@ -494,6 +501,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         "advances": merged_advances,
         "ledger": merged_ledger,
         "complaints": merged_complaints,
+        "roles": incoming.get("roles", _store_cache.get("roles", baseline["roles"])),
         "_push_subscriptions": _push_subscriptions,
     }
 

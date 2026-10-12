@@ -19,6 +19,7 @@ import {
   Radio,
   Send,
   User,
+  Users,
   Filter,
   Eye,
   Trash2,
@@ -34,10 +35,12 @@ import {
   deleteOrderInStore,
   subscribeToCRMStore,
   OrderItem,
+  EmployeeItem,
 } from "@/lib/store";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("Any");
   const [searchFilter, setSearchFilter] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -48,12 +51,13 @@ export default function OrdersPage() {
 
   // Sync with unified reactive store across all tabs & windows
   React.useEffect(() => {
-    const loadOrders = () => {
+    const loadOrdersAndEmployees = () => {
       const store = getCRMStore();
       setOrders(store.orders || []);
+      setEmployees(store.employees || []);
     };
-    loadOrders();
-    const unsubscribe = subscribeToCRMStore(loadOrders);
+    loadOrdersAndEmployees();
+    const unsubscribe = subscribeToCRMStore(loadOrdersAndEmployees);
     return () => unsubscribe();
   }, []);
 
@@ -69,6 +73,7 @@ export default function OrdersPage() {
     notes: "",
     fileName: "",
     fileDataUrl: "",
+    assigneeCode: "ALL", // "ALL" = Open Pool, or specific employee code
   });
 
   const showToast = (msg: string) => {
@@ -88,6 +93,9 @@ export default function OrdersPage() {
       return;
     }
 
+    const selectedEmp = employees.find((emp) => emp.code === newOrder.assigneeCode);
+    const isDirect = Boolean(selectedEmp && newOrder.assigneeCode !== "ALL");
+
     const item = registerOrderInStore({
       orderCode: newOrder.orderCode.trim(),
       customerName: newOrder.customerName.trim(),
@@ -97,12 +105,21 @@ export default function OrdersPage() {
       itemsDescription: newOrder.itemsDescription.trim() || `${newOrder.itemCount || 1} items parcel`,
       priority: newOrder.priority,
       receiptPhoto: newOrder.fileDataUrl || (newOrder.fileName ? "uploaded_parchi.jpg" : undefined),
-      status: "Broadcasted",
+      status: isDirect ? "Claimed" : "Broadcasted",
       notes: newOrder.notes.trim() || undefined,
+      broadcastTarget: isDirect ? "SPECIFIC" : "ALL",
+      assignedToCode: isDirect ? selectedEmp?.code : undefined,
+      assignedToName: isDirect ? selectedEmp?.name : undefined,
+      createdByName: "System Admin",
+      createdByRole: "ADMIN",
     });
 
     setShowRegisterModal(false);
-    showToast(`Order ${item.orderCode} registered & broadcasted to employee pool!`);
+    showToast(
+      isDirect
+        ? `✓ Order ${item.orderCode} directly assigned to ${selectedEmp?.name}!`
+        : `✓ Order ${item.orderCode} broadcasted to all employees in open pool!`
+    );
     setNewOrder({
       orderCode: "",
       customerName: "",
@@ -114,6 +131,7 @@ export default function OrdersPage() {
       notes: "",
       fileName: "",
       fileDataUrl: "",
+      assigneeCode: "ALL",
     });
   };
 
@@ -363,11 +381,18 @@ export default function OrdersPage() {
                   {/* Claimed By */}
                   <td className="py-3.5 px-5">
                     {order.claimedBy ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px]">
-                          {order.claimedBy.charAt(0)}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px]">
+                            {order.claimedBy.charAt(0)}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-800">{order.claimedBy}</span>
                         </div>
-                        <span className="text-xs font-semibold text-slate-800">{order.claimedBy}</span>
+                        {order.broadcastTarget === "SPECIFIC" && (
+                          <span className="inline-block text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
+                            Direct Assigned
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md">
@@ -377,7 +402,14 @@ export default function OrdersPage() {
                   </td>
 
                   {/* Created Time */}
-                  <td className="py-3.5 px-5 text-xs text-slate-500 font-mono">{order.created}</td>
+                  <td className="py-3.5 px-5 text-xs text-slate-500 font-mono">
+                    <div>{order.created}</div>
+                    {order.createdByRole === "EMPLOYEE" && (
+                      <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-sans">
+                        Emp: {order.createdByName}
+                      </span>
+                    )}
+                  </td>
 
                   {/* Quick Actions */}
                   <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
@@ -469,6 +501,46 @@ export default function OrdersPage() {
                     <option value="High">High Priority</option>
                     <option value="Urgent">Urgent (Express)</option>
                   </select>
+                </div>
+
+                {/* Broadcast / Assignee Selector */}
+                <div className="sm:col-span-2 space-y-1.5 p-3.5 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-blue-600" /> Broadcast / Assign Target *
+                    </label>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      newOrder.assigneeCode === "ALL"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-purple-100 text-purple-800"
+                    }`}>
+                      {newOrder.assigneeCode === "ALL" ? "📢 Open Pool (All Staff)" : "👤 Direct Assigned"}
+                    </span>
+                  </div>
+                  <select
+                    value={newOrder.assigneeCode}
+                    onChange={(e) => setNewOrder({ ...newOrder, assigneeCode: e.target.value })}
+                    className="w-full bg-white border border-blue-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                  >
+                    <option value="ALL">📢 Broadcast to All Employees (Open Pool - कोई भी कर्मचारी क्लेम कर सकता है)</option>
+                    <optgroup label="Directly Assign to Specific Employee:">
+                      {employees.map((emp) => (
+                        <option key={emp.id} value={emp.code}>
+                          👤 {emp.name} ({emp.code}) — {emp.designation || emp.department || "Staff"}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  {newOrder.assigneeCode !== "ALL" ? (
+                    <p className="text-[11px] text-purple-800 font-medium flex items-center gap-1 pt-0.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      Order will be directly given to {employees.find((e) => e.code === newOrder.assigneeCode)?.name}. It will immediately show in their &quot;My Orders&quot; section as <strong>Claimed</strong>.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-blue-800 font-medium pt-0.5">
+                      Order will be broadcasted to the common shop pool. All employees will receive a real-time notification to claim it.
+                    </p>
+                  )}
                 </div>
 
                 {/* Customer Name */}

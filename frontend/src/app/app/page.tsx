@@ -656,16 +656,21 @@ export default function EmployeeHomePage() {
           href="/app/orders"
           className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-xs hover:border-slate-300 transition-all block group cursor-pointer"
         >
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Available Orders
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+              Available Orders
+            </span>
+            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
+              + Broadcast
+            </span>
+          </div>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-extrabold text-slate-900 font-mono">{availableOrdersCount}</span>
             <span className="text-xs text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">
-              Claim →
+              Pool / Create →
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 truncate">Ready in pool</p>
+          <p className="text-[11px] text-slate-500 mt-1 truncate">Claim or Broadcast new order</p>
         </Link>
       </div>
 

@@ -88,6 +88,11 @@ export interface OrderItem {
   deliveredAt?: string;
   notes?: string;
   created: string;
+  broadcastTarget?: "ALL" | "SPECIFIC";
+  assignedToCode?: string;
+  assignedToName?: string;
+  createdByName?: string;
+  createdByRole?: "ADMIN" | "EMPLOYEE";
 }
 
 export interface AttendanceRecord {
@@ -186,6 +191,91 @@ export interface ActiveShiftState {
   distanceM: number;
 }
 
+export interface RoleItem {
+  id: string;
+  name: string;
+  description: string;
+  isAdmin: boolean;
+  usersCount: number;
+  permissions: string[];
+}
+
+export const initialRoles: RoleItem[] = [
+  {
+    id: "1",
+    name: "ADMIN",
+    description: "Super Administrator with full, unrestricted authority across all operations, financial ledgers, and configurations.",
+    isAdmin: true,
+    usersCount: 1,
+    permissions: ["*"],
+  },
+  {
+    id: "2",
+    name: "SUPERVISOR",
+    description: "Shift operations lead responsible for monitoring attendance, assigning operational tasks, broadcasting orders, and approving leaves.",
+    isAdmin: false,
+    usersCount: 3,
+    permissions: [
+      "attendance.read.all",
+      "attendance.qr.generate",
+      "attendance.corrections.approve",
+      "orders.read.all",
+      "orders.broadcast",
+      "orders.edit",
+      "tasks.create",
+      "tasks.review",
+      "leaves.read.all",
+      "leaves.approve",
+    ],
+  },
+  {
+    id: "3",
+    name: "EMPLOYEE",
+    description: "Standard field and shop floor workforce member with self-service attendance, order pool claiming, order broadcasting, and task execution.",
+    isAdmin: false,
+    usersCount: 18,
+    permissions: [
+      "attendance.checkin.self",
+      "orders.claim",
+      "orders.read.self",
+      "orders.broadcast",
+      "tasks.read.self",
+      "tasks.submit.self",
+      "leaves.apply.self",
+      "ledger.read.self",
+    ],
+  },
+  {
+    id: "4",
+    name: "ACCOUNTS_LEAD",
+    description: "Finance and accounts officer handling double-entry advance disbursements, bonus postings, and monthly payroll processing.",
+    isAdmin: false,
+    usersCount: 2,
+    permissions: [
+      "attendance.read.all",
+      "ledger.read.all",
+      "ledger.post_entry",
+      "payroll.run",
+      "payroll.approve",
+      "leaves.read.all",
+    ],
+  },
+  {
+    id: "5",
+    name: "DISPATCH_MANAGER",
+    description: "Logistics coordinator focused on customer order intake, dispatching, driver assignment, and delivery proof verification.",
+    isAdmin: false,
+    usersCount: 2,
+    permissions: [
+      "orders.read.all",
+      "orders.broadcast",
+      "orders.edit",
+      "orders.pod.verify",
+      "attendance.read.all",
+    ],
+  },
+];
+
 export interface CRMStoreData {
   settings: ShopSettings;
   employees: EmployeeItem[];
@@ -198,6 +288,7 @@ export interface CRMStoreData {
   corrections: CorrectionItem[];
   leaves: LeaveRequest[];
   complaints: ComplaintItem[];
+  roles: RoleItem[];
 }
 
 // Clean baseline store data for clean real-time operational use
@@ -248,6 +339,7 @@ export const cleanBaselineStore: CRMStoreData = {
   corrections: [],
   leaves: [],
   complaints: [],
+  roles: initialRoles,
 };
 
 export const STORAGE_KEY = "wcrm_unified_store_v4";
@@ -280,6 +372,7 @@ export const getCRMStore = (): CRMStoreData => {
       ledger: parsed.ledger || [],
       employees: parsed.employees || cleanBaselineStore.employees,
       settings: parsed.settings || cleanBaselineStore.settings,
+      roles: parsed.roles || cleanBaselineStore.roles,
     };
   } catch (err) {
     console.error("Failed to load store:", err);
@@ -642,7 +735,7 @@ export const addLedgerEntryInStore = (entry: Omit<LedgerEntry, "id" | "runningBa
 
 // ORDER ACTIONS
 export const registerOrderInStore = (data: {
-  orderCode: string;
+  orderCode?: string;
   customerName: string;
   phone: string;
   address?: string;
@@ -652,8 +745,15 @@ export const registerOrderInStore = (data: {
   receiptPhoto?: string;
   notes?: string;
   status?: OrderItem["status"];
+  broadcastTarget?: "ALL" | "SPECIFIC";
+  assignedToCode?: string;
+  assignedToName?: string;
+  createdByName?: string;
+  createdByRole?: "ADMIN" | "EMPLOYEE";
 }) => {
   const store = getCRMStore();
+  const isDirectSpecific = data.broadcastTarget === "SPECIFIC" && Boolean(data.assignedToName);
+
   const newOrder: OrderItem = {
     id: `ord-${Date.now()}`,
     orderCode: data.orderCode || `ORD-${String(store.orders.length + 1).padStart(4, "0")}`,
@@ -665,7 +765,22 @@ export const registerOrderInStore = (data: {
     priority: data.priority || "Normal",
     receiptPhoto: data.receiptPhoto,
     notes: data.notes,
-    status: data.status || "Broadcasted",
+    status: isDirectSpecific ? "Claimed" : (data.status || "Broadcasted"),
+    claimedBy: isDirectSpecific ? data.assignedToName : undefined,
+    claimedAt: isDirectSpecific
+      ? new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : undefined,
+    broadcastTarget: data.broadcastTarget || (isDirectSpecific ? "SPECIFIC" : "ALL"),
+    assignedToCode: data.assignedToCode,
+    assignedToName: data.assignedToName,
+    createdByName: data.createdByName || "System Admin",
+    createdByRole: data.createdByRole || "ADMIN",
     created: new Date().toLocaleDateString("en-US", {
       month: "short",
       day: "2-digit",
@@ -678,6 +793,22 @@ export const registerOrderInStore = (data: {
   store.orders = [newOrder, ...store.orders];
   saveCRMStore(store);
   return newOrder;
+};
+
+// ROLE & PERMISSION HELPERS
+export const saveRolesInStore = (roles: RoleItem[]) => {
+  const store = getCRMStore();
+  store.roles = roles;
+  saveCRMStore(store);
+  return store.roles;
+};
+
+export const canEmployeeBroadcastOrders = (employeeCode?: string): boolean => {
+  const store = getCRMStore();
+  if (!store.roles || store.roles.length === 0) return true;
+  const empRole = store.roles.find((r) => r.name === "EMPLOYEE");
+  if (!empRole) return true;
+  return empRole.permissions.includes("orders.broadcast") || empRole.permissions.includes("*");
 };
 
 export const claimOrderInStore = (orderId: string, employeeName: string) => {

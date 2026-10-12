@@ -19,6 +19,14 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import {
+  RoleItem,
+  initialRoles,
+  getCRMStore,
+  saveRolesInStore,
+  subscribeToCRMStore,
+} from "@/lib/store";
+
 interface PermissionDef {
   code: string;
   name: string;
@@ -113,95 +121,30 @@ const PERMISSION_MODULES: PermissionCategory[] = [
   },
 ];
 
-interface RoleItem {
-  id: string;
-  name: string;
-  description: string;
-  isAdmin: boolean;
-  usersCount: number;
-  permissions: string[];
-}
-
-const initialRoles: RoleItem[] = [
-  {
-    id: "1",
-    name: "ADMIN",
-    description: "Super Administrator with full, unrestricted authority across all operations, financial ledgers, and configurations.",
-    isAdmin: true,
-    usersCount: 1,
-    permissions: ["*"],
-  },
-  {
-    id: "2",
-    name: "SUPERVISOR",
-    description: "Shift operations lead responsible for monitoring attendance, assigning operational tasks, broadcasting orders, and approving leaves.",
-    isAdmin: false,
-    usersCount: 3,
-    permissions: [
-      "attendance.read.all",
-      "attendance.qr.generate",
-      "attendance.corrections.approve",
-      "orders.read.all",
-      "orders.broadcast",
-      "orders.edit",
-      "tasks.create",
-      "tasks.review",
-      "leaves.read.all",
-      "leaves.approve",
-    ],
-  },
-  {
-    id: "3",
-    name: "EMPLOYEE",
-    description: "Standard field and shop floor workforce member with self-service attendance, order pool claiming, and task execution.",
-    isAdmin: false,
-    usersCount: 18,
-    permissions: [
-      "attendance.checkin.self",
-      "orders.claim",
-      "orders.read.self",
-      "tasks.read.self",
-      "tasks.submit.self",
-      "leaves.apply.self",
-      "ledger.read.self",
-    ],
-  },
-  {
-    id: "4",
-    name: "ACCOUNTS_LEAD",
-    description: "Finance and accounts officer handling double-entry advance disbursements, bonus postings, and monthly payroll processing.",
-    isAdmin: false,
-    usersCount: 2,
-    permissions: [
-      "attendance.read.all",
-      "ledger.read.all",
-      "ledger.post_entry",
-      "payroll.run",
-      "payroll.approve",
-      "leaves.read.all",
-    ],
-  },
-  {
-    id: "5",
-    name: "DISPATCH_MANAGER",
-    description: "Logistics coordinator focused on customer order intake, dispatching, driver assignment, and delivery proof verification.",
-    isAdmin: false,
-    usersCount: 2,
-    permissions: [
-      "orders.read.all",
-      "orders.broadcast",
-      "orders.edit",
-      "orders.pod.verify",
-      "attendance.read.all",
-    ],
-  },
-];
-
 export default function RolesPage() {
-  const [roles, setRoles] = useState<RoleItem[]>(initialRoles);
-  const [selectedRoleId, setSelectedRoleId] = useState<string>("2"); // Default to Supervisor to show interactive toggles
+  const [roles, setRoles] = useState<RoleItem[]>(() => {
+    if (typeof window !== "undefined") {
+      const store = getCRMStore();
+      if (store.roles && store.roles.length > 0) return store.roles;
+    }
+    return initialRoles;
+  });
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("3"); // Default to Employee so admin immediately sees employee permissions!
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Sync roles reactively across all devices & store updates
+  React.useEffect(() => {
+    const load = () => {
+      const store = getCRMStore();
+      if (store.roles && store.roles.length > 0) {
+        setRoles(store.roles);
+      }
+    };
+    load();
+    const unsub = subscribeToCRMStore(load);
+    return () => unsub();
+  }, []);
 
   // New Role Modal
   const [showAddRoleModal, setShowAddRoleModal] = useState(false);
@@ -229,6 +172,7 @@ export default function RolesPage() {
     );
 
     setRoles(updatedRoles);
+    saveRolesInStore(updatedRoles);
   };
 
   const toggleModuleAll = (module: PermissionCategory) => {
@@ -251,10 +195,12 @@ export default function RolesPage() {
       r.id === selectedRole.id ? { ...r, permissions: updatedPerms } : r
     );
     setRoles(updatedRoles);
+    saveRolesInStore(updatedRoles);
   };
 
   const handleSaveRole = () => {
-    showToast(`Permissions updated & saved for ${selectedRole.name} role!`);
+    saveRolesInStore(roles);
+    showToast(`✓ Permissions updated & synced for ${selectedRole.name} role!`);
   };
 
   const handleCreateNewRole = (e: React.FormEvent) => {
@@ -270,7 +216,9 @@ export default function RolesPage() {
       permissions: ["attendance.checkin.self", "tasks.read.self"],
     };
 
-    setRoles([...roles, newRole]);
+    const updated = [...roles, newRole];
+    setRoles(updated);
+    saveRolesInStore(updated);
     setSelectedRoleId(newRole.id);
     setShowAddRoleModal(false);
     setNewRoleName("");
@@ -282,7 +230,10 @@ export default function RolesPage() {
     if (roleId === "1") return;
     const updated = roles.filter((r) => r.id !== roleId);
     setRoles(updated);
-    setSelectedRoleId(updated[0].id);
+    saveRolesInStore(updated);
+    if (selectedRoleId === roleId) {
+      setSelectedRoleId(updated[0]?.id || "1");
+    }
     showToast("Role removed successfully");
   };
 
