@@ -42,15 +42,15 @@ export default function EmployeeAttendancePage() {
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 text-center shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">FULL DAYS</span>
-          <span className="text-xl font-bold font-mono text-emerald-600">{fullDaysCount || 22}</span>
+          <span className="text-xl font-bold font-mono text-emerald-600">{fullDaysCount}</span>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 text-center shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">HALF DAYS</span>
-          <span className="text-xl font-bold font-mono text-amber-600">{halfDaysCount || 2}</span>
+          <span className="text-xl font-bold font-mono text-amber-600">{halfDaysCount}</span>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 text-center shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">OVERTIME</span>
-          <span className="text-xl font-bold font-mono text-blue-600">+{totalOvertime > 0 ? totalOvertime.toFixed(1) : "4.5"}h</span>
+          <span className="text-xl font-bold font-mono text-blue-600">{totalOvertime > 0 ? `+${totalOvertime.toFixed(1)}h` : "0h"}</span>
         </div>
       </div>
 

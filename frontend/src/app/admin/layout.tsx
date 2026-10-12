@@ -461,6 +461,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Page Content */}
         <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">{children}</main>
+
+        {/* Admin Footer */}
+        <footer className="border-t border-slate-200 bg-white py-4 px-4 sm:px-8 text-center sm:text-left">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+            <p>© 2026 Workforce CRM • Operations & Payroll Portal</p>
+            <div className="flex items-center gap-4 text-[11px]">
+              <Link href="/privacy" className="text-slate-600 hover:text-blue-600 underline underline-offset-2 transition-colors">
+                Privacy Policy & Security Standards
+              </Link>
+              <span>•</span>
+              <span className="text-emerald-600 font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                Compliant Enterprise Sync
+              </span>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );

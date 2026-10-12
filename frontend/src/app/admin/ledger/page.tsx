@@ -21,10 +21,11 @@ import {
   Clock,
 } from "lucide-react";
 import Link from "next/link";
-import { getCRMStore, saveCRMStore, LedgerEntry } from "@/lib/store";
+import { getCRMStore, saveCRMStore, LedgerEntry, EmployeeItem } from "@/lib/store";
 
 export default function LedgerPage() {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [employeeFilter, setEmployeeFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,8 +34,8 @@ export default function LedgerPage() {
   // New Ledger Entry Modal
   const [showPostModal, setShowPostModal] = useState(false);
   const [newEntry, setNewEntry] = useState({
-    employeeName: "Bharat vyas",
-    employeeCode: "E001",
+    employeeName: "",
+    employeeCode: "",
     type: "ADVANCE_DISBURSEMENT" as LedgerEntry["type"],
     amount: "",
     paymentMode: "Cash" as LedgerEntry["paymentMode"],
@@ -45,6 +46,20 @@ export default function LedgerPage() {
   const loadData = () => {
     const store = getCRMStore();
     setEntries(store.ledger || []);
+    const staffList = (store.employees || []).filter(
+      (e) => !e.code.includes("ADMIN") && e.department !== "Management"
+    );
+    setEmployees(staffList);
+    setNewEntry((prev) => {
+      if (!prev.employeeCode && staffList.length > 0) {
+        return {
+          ...prev,
+          employeeName: staffList[0].name,
+          employeeCode: staffList[0].code,
+        };
+      }
+      return prev;
+    });
   };
 
   useEffect(() => {
@@ -77,7 +92,7 @@ export default function LedgerPage() {
       newEntry.type === "EXPENSE_REIMBURSEMENT";
 
     const lastEmployeeEntry = entries.find((en) => en.employeeCode === newEntry.employeeCode);
-    const previousBalance = lastEmployeeEntry ? lastEmployeeEntry.runningBalance : 25000;
+    const previousBalance = lastEmployeeEntry ? lastEmployeeEntry.runningBalance : 0;
     const newBalance = isCredit ? previousBalance + amt : previousBalance - amt;
 
     const entry: LedgerEntry = {
@@ -107,8 +122,8 @@ export default function LedgerPage() {
     showToast(`Ledger entry posted: ₹${amt.toLocaleString()} (${entry.type}) for ${entry.employeeName}!`);
 
     setNewEntry({
-      employeeName: "Bharat vyas",
-      employeeCode: "E001",
+      employeeName: employees[0]?.name || "",
+      employeeCode: employees[0]?.code || "",
       type: "ADVANCE_DISBURSEMENT",
       amount: "",
       paymentMode: "Cash",
@@ -300,9 +315,11 @@ export default function LedgerPage() {
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
             >
               <option value="ALL">All Staff Members</option>
-              <option value="E001">Bharat vyas (E001)</option>
-              <option value="EMP001">Demo Employee (EMP001)</option>
-              <option value="EMP002">Priya Sharma (EMP002)</option>
+              {employees.map((emp) => (
+                <option key={emp.code} value={emp.code}>
+                  {emp.name} ({emp.code})
+                </option>
+              ))}
             </select>
           </div>
 
@@ -443,21 +460,24 @@ export default function LedgerPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Select Employee *</label>
                 <select
-                  value={newEntry.employeeName}
+                  value={newEntry.employeeCode}
                   onChange={(e) => {
-                    const empName = e.target.value;
-                    let code = "E001";
-                    if (empName === "Demo Employee") code = "EMP001";
-                    else if (empName === "Priya Sharma") code = "EMP002";
-                    else if (empName === "Rahul Sharma") code = "EMP512";
-                    setNewEntry({ ...newEntry, employeeName: empName, employeeCode: code });
+                    const code = e.target.value;
+                    const emp = employees.find((x) => x.code === code);
+                    setNewEntry({
+                      ...newEntry,
+                      employeeCode: code,
+                      employeeName: emp ? emp.name : "",
+                    });
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white font-bold"
                 >
-                  <option value="Bharat vyas">Bharat vyas (E001 - Operations)</option>
-                  <option value="Demo Employee">Demo Employee (EMP001 - Delivery)</option>
-                  <option value="Priya Sharma">Priya Sharma (EMP002 - Sales)</option>
-                  <option value="Rahul Sharma">Rahul Sharma (EMP512 - Sales)</option>
+                  {employees.map((emp) => (
+                    <option key={emp.code} value={emp.code}>
+                      {emp.name} ({emp.code} - {emp.department})
+                    </option>
+                  ))}
+                  {employees.length === 0 && <option value="">No employees available</option>}
                 </select>
               </div>
 

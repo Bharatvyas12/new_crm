@@ -79,8 +79,8 @@ function computeLivePayrollRecords(store: CRMStoreData, currentMonthStr: string)
 
     // 2. Overtime calculation
     const overtimeHours = empAttendance.reduce((sum, a) => sum + (Number(a.overtimeHours) || 0), 0);
-    const baseSalary = Number(emp.baseSalary) || 25000;
-    const dailyRate = Math.round(baseSalary / totalDaysInMonth);
+    const baseSalary = Number(emp.baseSalary) || 0;
+    const dailyRate = totalDaysInMonth > 0 ? Math.round(baseSalary / totalDaysInMonth) : 0;
     const hourlyRate = Math.round(dailyRate / 9);
     const overtimePay = Math.round(overtimeHours * (hourlyRate * 1.5));
 

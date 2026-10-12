@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -260,6 +261,18 @@ export default function LoginPage() {
               <span>Multi-Device Sync Active</span>
             </div>
             <span>v2.5.0</span>
+          </div>
+        </div>
+
+        {/* Global Footer */}
+        <div className="text-center space-y-1 text-xs text-slate-500">
+          <p>© 2026 Workforce CRM • All rights reserved.</p>
+          <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400">
+            <Link href="/privacy" className="hover:text-blue-400 underline underline-offset-2 transition-colors">
+              Privacy Policy & Terms
+            </Link>
+            <span>•</span>
+            <span>Geofenced & Encrypted PWA</span>
           </div>
         </div>
       </div>

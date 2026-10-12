@@ -45,6 +45,12 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
       {/* Main Page Area with comfortable bottom padding so all cards scroll above nav */}
       <main className="flex-1 max-w-lg w-full mx-auto p-4 sm:p-6 pb-36">
         {children}
+        <div className="pt-8 pb-4 text-center space-y-1">
+          <p className="text-[11px] text-slate-400">© 2026 Workforce CRM</p>
+          <Link href="/privacy" className="text-[10px] text-slate-400 hover:text-blue-600 underline underline-offset-2">
+            Privacy Policy & Data Security
+          </Link>
+        </div>
       </main>
 
       {/* Persistent Bottom Navigation Bar */}
