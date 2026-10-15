@@ -40,6 +40,7 @@ import {
   EmployeeItem,
 } from "@/lib/store";
 import { playLiveSoundNotification } from "@/lib/syncEngine";
+import { compressImage } from "@/lib/imageCompressor";
 
 export default function EmployeeOrdersPage() {
   const { user } = useAuth();
@@ -47,7 +48,7 @@ export default function EmployeeOrdersPage() {
 
   const employeeName = user?.full_name || user?.name || "Staff";
 
-  const [tab, setTab] = useState<"pool" | "my">("pool");
+  const [tab, setTab] = useState<"pool" | "my" | "all">("pool");
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [canBroadcast, setCanBroadcast] = useState(true);
@@ -93,13 +94,21 @@ export default function EmployeeOrdersPage() {
   const myOrders = orders.filter((o) => {
     if (o.status === "Broadcasted" || o.status === "Draft" || o.status === "Cancelled") return false;
     const nameMatch =
-      o.claimedBy?.toLowerCase() === employeeName.toLowerCase() ||
-      o.claimedBy?.toLowerCase()?.includes(employeeName.toLowerCase()) ||
-      employeeName.toLowerCase()?.includes(o.claimedBy?.toLowerCase() || "") ||
-      o.assignedToName?.toLowerCase() === employeeName.toLowerCase() ||
-      (user?.employee_id && o.assignedToCode === user.employee_id);
+      (o.claimedBy && (
+        o.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
+        o.claimedBy.toLowerCase().includes(employeeName.toLowerCase()) ||
+        employeeName.toLowerCase().includes(o.claimedBy.toLowerCase())
+      )) ||
+      (o.assignedToName && (
+        o.assignedToName.toLowerCase() === employeeName.toLowerCase() ||
+        o.assignedToName.toLowerCase().includes(employeeName.toLowerCase()) ||
+        employeeName.toLowerCase().includes(o.assignedToName.toLowerCase())
+      )) ||
+      (user?.employee_id && o.assignedToCode === user.employee_id) ||
+      (user?.employee_id && o.claimedBy?.toLowerCase() === user.employee_id.toLowerCase());
     return Boolean(nameMatch);
   });
+  const allOrders = orders.filter((o) => o.status !== "Cancelled" && o.status !== "Draft");
 
   const handleClaim = (order: OrderItem) => {
     claimOrderInStore(order.id, employeeName);
@@ -282,7 +291,7 @@ export default function EmployeeOrdersPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-slate-100 p-1 rounded-xl">
+      <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
         <button
           onClick={() => setTab("pool")}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
@@ -305,9 +314,20 @@ export default function EmployeeOrdersPage() {
             {lang === "hi" ? "मेरे ऑर्डर्स" : "My Orders"} ({myOrders.length})
           </span>
         </button>
+        <button
+          onClick={() => setTab("all")}
+          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            tab === "all" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500"
+          }`}
+        >
+          <Users size={14} />
+          <span>
+            {lang === "hi" ? "दुकान के सभी" : "All Orders"} ({allOrders.length})
+          </span>
+        </button>
       </div>
 
-      {tab === "pool" ? (
+      {tab === "pool" && (
         <div className="space-y-3">
           {poolOrders.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 space-y-2">
@@ -338,6 +358,12 @@ export default function EmployeeOrdersPage() {
                       {order.priority && order.priority !== "Normal" && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
                           {order.priority}
+                        </span>
+                      )}
+                      {(order.createdByName?.toLowerCase() === employeeName.toLowerCase() ||
+                        order.createdByRole === "EMPLOYEE") && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          ✓ {lang === "hi" ? "आपने ब्रॉडकास्ट किया" : "Broadcasted by You"}
                         </span>
                       )}
                     </div>
@@ -408,7 +434,9 @@ export default function EmployeeOrdersPage() {
             ))
           )}
         </div>
-      ) : (
+      )}
+
+      {tab === "my" && (
         <div className="space-y-3">
           {myOrders.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 space-y-2">
@@ -555,6 +583,162 @@ export default function EmployeeOrdersPage() {
                 )}
               </motion.div>
             ))
+          )}
+        </div>
+      )}
+
+      {/* Tab 3: All Store Orders / Shop Dispatch */}
+      {tab === "all" && (
+        <div className="space-y-3">
+          {allOrders.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 space-y-2">
+              <Package size={36} className="mx-auto text-slate-300" />
+              <p className="font-semibold text-slate-700 text-sm">
+                {lang === "hi" ? "दुकान में कोई ऑर्डर नहीं है" : "No orders found in store"}
+              </p>
+              <p className="text-xs text-slate-400">
+                {lang === "hi"
+                  ? "काउंसल / एडमिन काउंटर द्वारा बनाए गए ऑर्डर यहां हमेशा दिखाई देंगे।"
+                  : "All shop dispatch orders will always remain visible here with live status."}
+              </p>
+            </div>
+          ) : (
+            allOrders.map((order) => {
+              const isMine =
+                (order.claimedBy && (
+                  order.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
+                  order.claimedBy.toLowerCase().includes(employeeName.toLowerCase()) ||
+                  employeeName.toLowerCase().includes(order.claimedBy.toLowerCase())
+                )) ||
+                (order.assignedToName && (
+                  order.assignedToName.toLowerCase() === employeeName.toLowerCase() ||
+                  order.assignedToName.toLowerCase().includes(employeeName.toLowerCase()) ||
+                  employeeName.toLowerCase().includes(order.assignedToName.toLowerCase())
+                )) ||
+                (user?.employee_id && order.assignedToCode === user.employee_id) ||
+                (user?.employee_id && order.claimedBy?.toLowerCase() === user.employee_id.toLowerCase());
+
+              const isBroadcasted = order.status === "Broadcasted";
+
+              return (
+                <motion.div
+                  key={order.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                          {order.orderCode}
+                        </span>
+                        {order.priority && order.priority !== "Normal" && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                            {order.priority}
+                          </span>
+                        )}
+                        {isMine && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                            ★ {lang === "hi" ? "आपका ऑर्डर" : "Assigned to You"}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-sm mt-1">{order.customerName}</h3>
+                    </div>
+
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
+                        order.status === "Delivered"
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          : order.status === "Ready"
+                          ? "bg-purple-100 text-purple-800 border-purple-300"
+                          : order.status === "Packed"
+                          ? "bg-cyan-100 text-cyan-800 border-cyan-300"
+                          : order.status === "Packing"
+                          ? "bg-indigo-100 text-indigo-800 border-indigo-300"
+                          : order.status === "Claimed"
+                          ? "bg-blue-100 text-blue-800 border-blue-300"
+                          : "bg-amber-100 text-amber-800 border-amber-300 animate-pulse"
+                      }`}
+                    >
+                      {order.status === "Broadcasted"
+                        ? lang === "hi"
+                          ? "पूल में उपलब्ध"
+                          : "Broadcasted (Pool)"
+                        : order.status}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1.5">
+                    {order.itemsDescription && (
+                      <p>
+                        <strong>{lang === "hi" ? "सामान:" : "Items"} ({order.itemsCount}):</strong> {order.itemsDescription}
+                      </p>
+                    )}
+                    {order.address && (
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <MapPin size={12} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{order.address}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60">
+                      <span>
+                        👤 {lang === "hi" ? "असाइन:" : "Assigned:"}{" "}
+                        <strong className="text-slate-800">
+                          {order.claimedBy || order.assignedToName || (lang === "hi" ? "पूल में खुला (Unclaimed)" : "Open Pool")}
+                        </strong>
+                      </span>
+                      <span>
+                        🕒 {order.created}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                    {order.receiptPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => setViewingParchi(order)}
+                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <FileText size={13} />
+                        <span>{lang === "hi" ? "पर्ची" : "Slip"}</span>
+                      </button>
+                    )}
+
+                    {isBroadcasted && (
+                      <button
+                        onClick={() => handleClaim(order)}
+                        disabled={claimedId === order.id}
+                        className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                      >
+                        <Package size={14} />
+                        <span>
+                          {claimedId === order.id
+                            ? lang === "hi"
+                              ? "असाइन हो रहा है..."
+                              : "Claiming..."
+                            : lang === "hi"
+                            ? "यह ऑर्डर क्लेम करें"
+                            : "Claim This Order"}
+                        </span>
+                      </button>
+                    )}
+
+                    {isMine && order.status !== "Delivered" && (
+                      <button
+                        onClick={() => advanceStatus(order)}
+                        className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <ArrowRight size={14} />
+                        <span>{lang === "hi" ? "स्थिति आगे बढ़ाएं" : "Advance Step"}</span>
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })
           )}
         </div>
       )}
@@ -811,18 +995,27 @@ export default function EmployeeOrdersPage() {
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
+                      try {
+                        const compressed = await compressImage(file, 800, 800, 0.65);
                         setNewOrder((prev) => ({
                           ...prev,
                           fileName: file.name,
-                          fileDataUrl: (event.target?.result as string) || "",
+                          fileDataUrl: compressed,
                         }));
-                      };
-                      reader.readAsDataURL(file);
+                      } catch {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          setNewOrder((prev) => ({
+                            ...prev,
+                            fileName: file.name,
+                            fileDataUrl: (event.target?.result as string) || "",
+                          }));
+                        };
+                        reader.readAsDataURL(file);
+                      }
                     }
                   }}
                   className="text-xs text-slate-600 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"

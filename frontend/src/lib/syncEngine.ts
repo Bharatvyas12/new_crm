@@ -185,7 +185,23 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           localStorage.setItem(UPDATED_AT_KEY, payload.updated_at);
         }
 
-        // Save to local storage
+        // Protect locally created orders from being erased by race conditions
+        if (prevStore && Array.isArray(prevStore.orders)) {
+          const serverOrderIds = new Set((payload.data.orders || []).map((o: any) => o.id));
+          const unsyncedLocalOrders = prevStore.orders.filter(
+            (o: any) => o && o.id && !serverOrderIds.has(o.id) && !o.isDeleted
+          );
+          if (unsyncedLocalOrders.length > 0) {
+            payload.data.orders = [...unsyncedLocalOrders, ...(payload.data.orders || [])];
+            // Push merged state back to cloud so server catches up immediately
+            setTimeout(() => {
+              const fullStore = { ...prevStore, ...payload.data };
+              pushStoreToCloud(fullStore);
+            }, 300);
+          }
+        }
+
+        // Save safely merged store to local storage
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload.data));
 
         // Detect if new orders or tasks arrived and trigger system notification with tune
@@ -195,11 +211,23 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           const currentTasks = payload.data.tasks || [];
           const prevTasks = prevStore.tasks || [];
 
-          if (currentOrders.length > prevOrders.length) {
-            const diff = currentOrders.length - prevOrders.length;
+          const prevOrderIds = new Set(prevOrders.map((o: any) => o.id));
+          const newOrders = currentOrders.filter((o: any) => o && o.id && !prevOrderIds.has(o.id));
+          const newBroadcasted = newOrders.filter((o: any) => o.status === "Broadcasted");
+
+          if (newBroadcasted.length > 0) {
+            const top = newBroadcasted[0];
+            playNotificationTune();
             sendSystemPhoneNotification(
-              "📦 New Order in Pool!",
-              `🚨 ${diff} new order(s) available for pickup & dispatch! Tap to claim.`,
+              `📦 New Order in Pool: ${top.orderCode || "ORD"}`,
+              `🚨 ${top.customerName || "Customer"} (${top.itemsCount || 1} items) ready in shop pool. Tap to claim!`,
+              "/app/orders"
+            );
+          } else if (newOrders.length > 0) {
+            playNotificationTune();
+            sendSystemPhoneNotification(
+              "📦 New Order in Store!",
+              `🚨 ${newOrders.length} new dispatch order(s) available. Tap to view.`,
               "/app/orders"
             );
           } else if (currentTasks.length > prevTasks.length) {

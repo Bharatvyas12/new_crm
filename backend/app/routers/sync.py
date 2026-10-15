@@ -84,6 +84,8 @@ def _load_store_from_disk():
                 payload = json.load(f)
                 data = payload.get("data", {})
                 if isinstance(data, dict) and "employees" in data:
+                    if isinstance(data.get("orders"), list):
+                        data["orders"] = _sanitize_orders(data["orders"])
                     _store_cache = data
                     _store_version = payload.get("version", 1)
                     _store_updated_at = payload.get("updated_at", datetime.now(timezone.utc).isoformat())
@@ -125,6 +127,8 @@ async def load_store_from_postgres() -> bool:
             result = await session.execute(stmt)
             record = result.scalar_one_or_none()
             if record and isinstance(record.data, dict) and "employees" in record.data:
+                if isinstance(record.data.get("orders"), list):
+                    record.data["orders"] = _sanitize_orders(record.data["orders"])
                 _store_cache = record.data
                 _store_version = record.version
                 _store_updated_at = record.updated_at
@@ -169,8 +173,20 @@ async def save_store_to_postgres() -> bool:
     return False
 
 
-# Initialize store on module load
-_load_store_from_disk()
+def _sanitize_orders(orders_list: list) -> list:
+    """Shrinks any oversized receiptPhoto (e.g. > 150KB raw base64) to prevent cloud sync stall."""
+    if not isinstance(orders_list, list):
+        return []
+    cleaned = []
+    for item in orders_list:
+        if isinstance(item, dict):
+            item_copy = dict(item)
+            photo = item_copy.get("receiptPhoto")
+            if photo and isinstance(photo, str) and len(photo) > 150000:
+                # Truncate oversized raw photo so it doesn't block sync
+                item_copy["receiptPhoto"] = "uploaded_parchi.jpg"
+            cleaned.append(item_copy)
+    return cleaned
 
 
 def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str = "id", deleted_ids: Optional[list] = None) -> list:
@@ -433,6 +449,10 @@ async def update_cloud_store(payload: SyncPushPayload):
 
     # Pre-fetch latest from postgres if another instance/reboot occurred
     await load_store_from_postgres()
+
+    prev_orders = list(_store_cache.get("orders", []))
+    prev_tasks = list(_store_cache.get("tasks", []))
+    prev_order_map = {str(o.get("id")): o for o in prev_orders if isinstance(o, dict) and o.get("id")}
     
     # Merge active shifts
     merged_shifts = _merge_active_shifts(
@@ -447,6 +467,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         key_field="id",
         deleted_ids=payload.deleted_order_ids
     )
+    merged_orders = _sanitize_orders(merged_orders)
     merged_tasks = _merge_item_lists(
         _store_cache.get("tasks", []),
         incoming.get("tasks", []),
@@ -505,9 +526,6 @@ async def update_cloud_store(payload: SyncPushPayload):
         "_push_subscriptions": _push_subscriptions,
     }
 
-    old_orders_count = len(_store_cache.get("orders", []))
-    old_tasks_count = len(_store_cache.get("tasks", []))
-
     _store_cache = merged
     _store_version += 1
     _store_updated_at = datetime.now(timezone.utc).isoformat()
@@ -516,14 +534,53 @@ async def update_cloud_store(payload: SyncPushPayload):
     _save_store_to_disk()
     await save_store_to_postgres()
 
-    # Trigger background Web Push if new orders or tasks were added
-    if len(merged_orders) > old_orders_count:
+    # Detect newly added orders OR orders that transitioned to "Broadcasted" or direct "Claimed"
+    new_broadcasted_orders = []
+    direct_assigned_orders = []
+    for ord_item in merged_orders:
+        if isinstance(ord_item, dict):
+            oid = str(ord_item.get("id"))
+            status = ord_item.get("status")
+            prev_ord = prev_order_map.get(oid)
+            if status == "Broadcasted":
+                if not prev_ord or prev_ord.get("status") != "Broadcasted":
+                    new_broadcasted_orders.append(ord_item)
+            elif status == "Claimed" and ord_item.get("broadcastTarget") == "SPECIFIC":
+                if not prev_ord:
+                    direct_assigned_orders.append(ord_item)
+
+    # Trigger background Web Push for new broadcasted orders to ALL employees
+    for n_ord in new_broadcasted_orders:
+        code = n_ord.get("orderCode") or "New Order"
+        cust = n_ord.get("customerName") or "Customer"
+        cnt = n_ord.get("itemsCount") or 1
+        broadcast_web_push(
+            f"📦 New Order in Pool: {code}",
+            f"{cust} • {cnt} item(s) available in shop pool. Tap to claim!",
+            "/app/orders"
+        )
+    
+    # Trigger direct push if assigned to specific employee
+    for d_ord in direct_assigned_orders:
+        code = d_ord.get("orderCode") or "New Order"
+        cust = d_ord.get("customerName") or "Customer"
+        target_code = d_ord.get("assignedToCode")
+        broadcast_web_push(
+            f"📦 New Order Assigned: {code}",
+            f"{cust} • Assigned directly to you. Tap to view & dispatch.",
+            "/app/orders",
+            target_code=target_code
+        )
+
+    # Fallback push if order count increased but not caught above
+    if len(merged_orders) > len(prev_orders) and not new_broadcasted_orders and not direct_assigned_orders:
         broadcast_web_push(
             "📦 New Order in Pool!",
             "A new wholesale order is available in the pool. Tap to view.",
             "/app/orders"
         )
-    if len(merged_tasks) > old_tasks_count:
+
+    if len(merged_tasks) > len(prev_tasks):
         broadcast_web_push(
             "📋 New Work Task Assigned!",
             "Admin assigned or updated tasks. Tap to open tasks.",

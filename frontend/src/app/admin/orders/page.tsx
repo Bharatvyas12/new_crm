@@ -37,6 +37,7 @@ import {
   OrderItem,
   EmployeeItem,
 } from "@/lib/store";
+import { compressImage } from "@/lib/imageCompressor";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
@@ -620,18 +621,27 @@ export default function OrdersPage() {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
+                        try {
+                          const compressed = await compressImage(file, 800, 800, 0.65);
                           setNewOrder((prev) => ({
                             ...prev,
                             fileName: file.name,
-                            fileDataUrl: (event.target?.result as string) || "",
+                            fileDataUrl: compressed,
                           }));
-                        };
-                        reader.readAsDataURL(file);
+                        } catch {
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            setNewOrder((prev) => ({
+                              ...prev,
+                              fileName: file.name,
+                              fileDataUrl: (event.target?.result as string) || "",
+                            }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
                       }
                     }}
                     className="text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
