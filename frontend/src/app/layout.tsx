@@ -7,13 +7,13 @@ import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Workforce CRM — Operations Platform",
+  title: "Mahesh Enterprises — Operations Platform",
   description: "Mobile-first workforce operations, attendance, tasks, orders, and payroll",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Workforce CRM",
+    title: "Mahesh Enterprises",
   },
   icons: {
     icon: "/icon-192.png",

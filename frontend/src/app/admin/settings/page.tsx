@@ -32,6 +32,7 @@ export default function SettingsPage() {
     shiftStart: "09:00",
     shiftEnd: "19:00",
     requiredDailyHours: 10,
+    allowedBreakMinutes: 60,
     gracePeriodMinutes: 15,
     qrRotationSeconds: 45,
     lastUpdated: "Today",
@@ -553,6 +554,26 @@ export default function SettingsPage() {
                   onChange={(e) => setSettings({ ...settings, requiredDailyHours: Number(e.target.value) })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-mono font-bold focus:bg-white"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">Allowed Break Duration (Minutes)</label>
+                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    Auto Excess Deduction
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={240}
+                  value={settings.allowedBreakMinutes ?? 60}
+                  onChange={(e) => setSettings({ ...settings, allowedBreakMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-mono font-bold focus:bg-white"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Excess break taken beyond this limit will be automatically deducted from employee daily working hours.
+                </p>
               </div>
 
               <div className="space-y-1.5">

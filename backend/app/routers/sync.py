@@ -15,6 +15,7 @@ STORE_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_
 _store_cache: Dict[str, Any] = {}
 _store_version: int = 1
 _store_updated_at: str = datetime.now(timezone.utc).isoformat()
+_push_subscriptions: Dict[str, Dict[str, Any]] = {}
 
 
 def _get_initial_clean_store() -> Dict[str, Any]:
@@ -32,6 +33,7 @@ def _get_initial_clean_store() -> Dict[str, Any]:
             "shiftStart": "09:00",
             "shiftEnd": "19:00",
             "requiredDailyHours": 10,
+            "allowedBreakMinutes": 60,
             "gracePeriodMinutes": 15,
             "qrRotationSeconds": 45,
             "lastUpdated": today_str,
@@ -56,7 +58,292 @@ def _get_initial_clean_store() -> Dict[str, Any]:
                 "upiId": "admin@okhdfc",
                 "casualLeaves": 12,
                 "sickLeaves": 8,
-            }
+            },
+            {
+                "id": "2",
+                "code": "E001",
+                "name": "Bharat vyas",
+                "email": "bharat1@crm.com",
+                "department": "Operations",
+                "designation": "Supervisor",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Oct 01, 2026",
+                "phone": "9829012345",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 35000,
+                "bankAccount": "112233445566",
+                "bankIfsc": "SBIN0004321",
+                "upiId": "bharat@oksbi",
+                "casualLeaves": 8,
+                "sickLeaves": 6.5,
+            },
+            {
+                "id": "3",
+                "code": "EMP002",
+                "name": "Priya Sharma",
+                "email": "priya@crm.com",
+                "department": "Sales",
+                "designation": "Senior Sales Lead",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Jan 15, 2026",
+                "phone": "9876501234",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 32000,
+                "bankAccount": "998877665544",
+                "bankIfsc": "HDFC0001234",
+                "upiId": "priya@okhdfc",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "4",
+                "code": "EMP003",
+                "name": "Rahul Verma",
+                "email": "rahul@crm.com",
+                "department": "Operations",
+                "designation": "Dispatch Manager",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Feb 01, 2026",
+                "phone": "9876501235",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 30000,
+                "bankAccount": "223344556677",
+                "bankIfsc": "ICIC0001234",
+                "upiId": "rahul@okicici",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "5",
+                "code": "EMP004",
+                "name": "Amit Kumar",
+                "email": "amit@crm.com",
+                "department": "Dispatch",
+                "designation": "Field Executive",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Feb 10, 2026",
+                "phone": "9876501236",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 28000,
+                "bankAccount": "334455667788",
+                "bankIfsc": "SBIN0001234",
+                "upiId": "amit@oksbi",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "6",
+                "code": "EMP005",
+                "name": "Suresh Patel",
+                "email": "suresh@crm.com",
+                "department": "Inventory",
+                "designation": "Inventory Assistant",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Feb 15, 2026",
+                "phone": "9876501237",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 26000,
+                "bankAccount": "445566778899",
+                "bankIfsc": "BARB0001234",
+                "upiId": "suresh@okaxis",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "7",
+                "code": "EMP006",
+                "name": "Vikram Singh",
+                "email": "vikram@crm.com",
+                "department": "Delivery",
+                "designation": "Delivery Associate",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Mar 01, 2026",
+                "phone": "9876501238",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 25000,
+                "bankAccount": "556677889900",
+                "bankIfsc": "PUNB0001234",
+                "upiId": "vikram@okpnb",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "8",
+                "code": "EMP007",
+                "name": "Deepak Joshi",
+                "email": "deepak@crm.com",
+                "department": "Operations",
+                "designation": "Shop Floor Lead",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Mar 10, 2026",
+                "phone": "9876501239",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 27000,
+                "bankAccount": "667788990011",
+                "bankIfsc": "HDFC0005678",
+                "upiId": "deepak@okhdfc",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "9",
+                "code": "EMP008",
+                "name": "Manish Jangid",
+                "email": "manish@crm.com",
+                "department": "Packaging",
+                "designation": "Packing Specialist",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Mar 15, 2026",
+                "phone": "9876501240",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 24000,
+                "bankAccount": "778899001122",
+                "bankIfsc": "SBIN0005678",
+                "upiId": "manish@oksbi",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "10",
+                "code": "EMP009",
+                "name": "Rakesh Sharma",
+                "email": "rakesh@crm.com",
+                "department": "Sales",
+                "designation": "Counter Sales",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Apr 01, 2026",
+                "phone": "9876501241",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 26000,
+                "bankAccount": "889900112233",
+                "bankIfsc": "ICIC0005678",
+                "upiId": "rakesh@okicici",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "11",
+                "code": "EMP010",
+                "name": "Sunil Meena",
+                "email": "sunil@crm.com",
+                "department": "Field",
+                "designation": "Field Staff",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Apr 15, 2026",
+                "phone": "9876501242",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 25000,
+                "bankAccount": "990011223344",
+                "bankIfsc": "BARB0005678",
+                "upiId": "sunil@okbarb",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "12",
+                "code": "EMP011",
+                "name": "Pooja Gupta",
+                "email": "pooja@crm.com",
+                "department": "Accounts",
+                "designation": "Accounts Assistant",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "May 01, 2026",
+                "phone": "9876501243",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 28000,
+                "bankAccount": "110022334455",
+                "bankIfsc": "HDFC0009999",
+                "upiId": "pooja@okhdfc",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "13",
+                "code": "EMP012",
+                "name": "Ajay Soni",
+                "email": "ajay@crm.com",
+                "department": "Inventory",
+                "designation": "Stock Handler",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "May 15, 2026",
+                "phone": "9876501244",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 24000,
+                "bankAccount": "220033445566",
+                "bankIfsc": "SBIN0009999",
+                "upiId": "ajay@oksbi",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "14",
+                "code": "EMP013",
+                "name": "Naveen Kumawat",
+                "email": "naveen@crm.com",
+                "department": "Logistics",
+                "designation": "Logistics Coordinator",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Jun 01, 2026",
+                "phone": "9876501245",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 26000,
+                "bankAccount": "330044556677",
+                "bankIfsc": "ICIC0009999",
+                "upiId": "naveen@okicici",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "15",
+                "code": "EMP014",
+                "name": "Pankaj Yadav",
+                "email": "pankaj@crm.com",
+                "department": "Store",
+                "designation": "Store Associate",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Jun 15, 2026",
+                "phone": "9876501246",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 24000,
+                "bankAccount": "440055667788",
+                "bankIfsc": "BARB0009999",
+                "upiId": "pankaj@okbarb",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
+            {
+                "id": "16",
+                "code": "EMP015",
+                "name": "Kiran Choudhary",
+                "email": "kiran@crm.com",
+                "department": "Orders",
+                "designation": "Order Processing Lead",
+                "type": "Full Time",
+                "status": "Active",
+                "joined": "Jul 01, 2026",
+                "phone": "9876501247",
+                "initialPassword": "Emp@2026",
+                "baseSalary": 27000,
+                "bankAccount": "550066778899",
+                "bankIfsc": "HDFC0008888",
+                "upiId": "kiran@okhdfc",
+                "casualLeaves": 10,
+                "sickLeaves": 8,
+            },
         ],
         "advances": [],
         "ledger": [],
@@ -66,6 +353,7 @@ def _get_initial_clean_store() -> Dict[str, Any]:
         "corrections": [],
         "leaves": [],
         "complaints": [],
+        "deletedOrderIds": [],
         "roles": [
             {"id": "1", "name": "ADMIN", "isAdmin": True, "usersCount": 1, "permissions": ["*"]},
             {"id": "2", "name": "SUPERVISOR", "isAdmin": False, "usersCount": 3, "permissions": ["attendance.read.all", "attendance.qr.generate", "attendance.corrections.approve", "orders.read.all", "orders.broadcast", "orders.edit", "tasks.create", "tasks.review", "leaves.read.all", "leaves.approve"]},
@@ -76,6 +364,36 @@ def _get_initial_clean_store() -> Dict[str, Any]:
     }
 
 
+
+def _sanitize_orders(orders_list: list) -> list:
+    """Shrinks any oversized receiptPhoto (e.g. > 150KB raw base64) to prevent cloud sync stall."""
+    if not isinstance(orders_list, list):
+        return []
+    cleaned = []
+    for item in orders_list:
+        if isinstance(item, dict):
+            item_copy = dict(item)
+            photo = item_copy.get("receiptPhoto")
+            if photo and isinstance(photo, str) and len(photo) > 150000:
+                # Truncate oversized raw photo so it doesn't block sync
+                item_copy["receiptPhoto"] = "uploaded_parchi.jpg"
+            cleaned.append(item_copy)
+    return cleaned
+
+
+def _save_store_to_disk():
+    try:
+        payload = {
+            "version": _store_version,
+            "updated_at": _store_updated_at,
+            "data": _store_cache,
+        }
+        with open(STORE_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as e:
+        print(f"[Sync] Error saving store to disk: {e}")
+
+
 def _load_store_from_disk():
     global _store_cache, _store_version, _store_updated_at
     if os.path.exists(STORE_FILE_PATH):
@@ -83,9 +401,11 @@ def _load_store_from_disk():
             with open(STORE_FILE_PATH, "r", encoding="utf-8") as f:
                 payload = json.load(f)
                 data = payload.get("data", {})
-                if isinstance(data, dict) and "employees" in data:
+                if isinstance(data, dict):
                     if isinstance(data.get("orders"), list):
                         data["orders"] = _sanitize_orders(data["orders"])
+                    if not data.get("employees") or not isinstance(data.get("employees"), list) or len(data.get("employees")) == 0:
+                        data["employees"] = _get_initial_clean_store()["employees"]
                     _store_cache = data
                     _store_version = payload.get("version", 1)
                     _store_updated_at = payload.get("updated_at", datetime.now(timezone.utc).isoformat())
@@ -103,17 +423,8 @@ def _load_store_from_disk():
     _save_store_to_disk()
 
 
-def _save_store_to_disk():
-    try:
-        payload = {
-            "version": _store_version,
-            "updated_at": _store_updated_at,
-            "data": _store_cache,
-        }
-        with open(STORE_FILE_PATH, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-    except Exception as e:
-        print(f"[Sync] Error saving store to disk: {e}")
+# Initialize store cache immediately upon module loading
+_load_store_from_disk()
 
 
 async def load_store_from_postgres() -> bool:
@@ -140,6 +451,8 @@ async def load_store_from_postgres() -> bool:
     except Exception as e:
         # Fallback to in-memory/disk store gracefully
         print(f"[Sync-Postgres] Postgres read note: {e}")
+        if not _store_cache or not _store_cache.get("employees"):
+            _load_store_from_disk()
     return False
 
 
@@ -172,21 +485,6 @@ async def save_store_to_postgres() -> bool:
         print(f"[Sync-Postgres] Postgres write error: {e}")
     return False
 
-
-def _sanitize_orders(orders_list: list) -> list:
-    """Shrinks any oversized receiptPhoto (e.g. > 150KB raw base64) to prevent cloud sync stall."""
-    if not isinstance(orders_list, list):
-        return []
-    cleaned = []
-    for item in orders_list:
-        if isinstance(item, dict):
-            item_copy = dict(item)
-            photo = item_copy.get("receiptPhoto")
-            if photo and isinstance(photo, str) and len(photo) > 150000:
-                # Truncate oversized raw photo so it doesn't block sync
-                item_copy["receiptPhoto"] = "uploaded_parchi.jpg"
-            cleaned.append(item_copy)
-    return cleaned
 
 
 def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str = "id", deleted_ids: Optional[list] = None) -> list:
@@ -224,7 +522,19 @@ def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str =
                         item["receiptPhoto"] = merged_map[item_id]["receiptPhoto"]
                     merged_map[item_id] = item
 
-    return list(merged_map.values())
+    items = list(merged_map.values())
+    if any("orderCode" in it or "itemsCount" in it for it in items if isinstance(it, dict)):
+        def _get_sort_key(it):
+            if not isinstance(it, dict):
+                return 0.0
+            if isinstance(it.get("_updatedTimestamp"), (int, float)):
+                return float(it["_updatedTimestamp"])
+            if isinstance(it.get("_createdTimestamp"), (int, float)):
+                return float(it["_createdTimestamp"])
+            code_num = "".join(filter(str.isdigit, str(it.get("orderCode") or it.get("id") or "")))
+            return float(code_num) if code_num else 0.0
+        items.sort(key=_get_sort_key, reverse=True)
+    return items
 
 
 def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
@@ -418,7 +728,9 @@ async def get_db_status():
 @router.get("/store")
 async def get_cloud_store():
     """Returns the latest real-time CRM store and version."""
-    await load_store_from_postgres()
+    loaded = await load_store_from_postgres()
+    if not loaded and (not _store_cache or not _store_cache.get("employees")):
+        _load_store_from_disk()
     return {
         "status": "ok",
         "version": _store_version,
@@ -460,12 +772,19 @@ async def update_cloud_store(payload: SyncPushPayload):
         incoming.get("activeShifts", {})
     )
 
+    # Maintain cumulative deleted order tombstones
+    existing_deleted_orders = set(_store_cache.get("deletedOrderIds", []))
+    if payload.deleted_order_ids:
+        for d in payload.deleted_order_ids:
+            existing_deleted_orders.add(str(d))
+    all_deleted_orders = list(existing_deleted_orders)
+
     # Merge list collections intelligently without cross-device data loss
     merged_orders = _merge_item_lists(
         _store_cache.get("orders", []),
         incoming.get("orders", []),
         key_field="id",
-        deleted_ids=payload.deleted_order_ids
+        deleted_ids=all_deleted_orders
     )
     merged_orders = _sanitize_orders(merged_orders)
     merged_tasks = _merge_item_lists(
@@ -523,6 +842,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         "ledger": merged_ledger,
         "complaints": merged_complaints,
         "roles": incoming.get("roles", _store_cache.get("roles", baseline["roles"])),
+        "deletedOrderIds": all_deleted_orders,
         "_push_subscriptions": _push_subscriptions,
     }
 

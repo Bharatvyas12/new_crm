@@ -13,8 +13,14 @@ let lastKnownUpdatedAt = "";
 let isCloudOnline = true;
 
 export const getApiBaseUrl = (): string => {
-  // Always connect all devices (phones, laptops, Vercel, localhost) directly to the unified Render Cloud Backend
-  return "https://new-crm-c339.onrender.com/api/v1";
+  // When running locally in development, route to local FastAPI backend to prevent test orders from notifying real employees
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return process.env.NEXT_PUBLIC_LOCAL_API_URL || "http://localhost:8000/api/v1";
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "https://new-crm-c339.onrender.com/api/v1";
 };
 
 export const getCloudOnlineStatus = () => isCloudOnline;
@@ -85,6 +91,27 @@ export const pushStoreToCloud = async (
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
 
+    const localDeletedOrders = (() => {
+      try {
+        const raw = localStorage.getItem("wcrm_deleted_order_ids");
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    })();
+    const allDeletedOrders = Array.from(new Set([...localDeletedOrders, ...(options?.deletedOrderIds || [])]));
+
+    // Include tombstones in orders payload so backend explicitly purges them
+    const cleanOrders = (storeData.orders || []).filter(
+      (o: any) => o && o.id && !allDeletedOrders.includes(o.id) && !o.isDeleted
+    );
+    const tombstoneOrders = allDeletedOrders.map((id) => ({ id, isDeleted: true }));
+    const outgoingData = {
+      ...storeData,
+      orders: [...cleanOrders, ...tombstoneOrders],
+      deletedOrderIds: allDeletedOrders,
+    };
+
     const response = await fetch(`${baseUrl}/sync/store?_t=${Date.now()}`, {
       method: "POST",
       headers: {
@@ -92,11 +119,11 @@ export const pushStoreToCloud = async (
         ...NO_CACHE_HEADERS,
       },
       body: JSON.stringify({
-        data: storeData,
+        data: outgoingData,
         client_version: currentVersion,
         client_id: typeof navigator !== "undefined" ? navigator.userAgent.substring(0, 50) : "client",
         deleted_task_ids: options?.deletedTaskIds,
-        deleted_order_ids: options?.deletedOrderIds,
+        deleted_order_ids: allDeletedOrders,
       }),
       signal: controller.signal,
     });
@@ -113,6 +140,20 @@ export const pushStoreToCloud = async (
         localStorage.setItem(UPDATED_AT_KEY, result.updated_at);
       }
       if (result.data && typeof result.data === "object") {
+        const serverDeleted = Array.isArray(result.data.deletedOrderIds) ? result.data.deletedOrderIds : [];
+        const mergedDeleted = Array.from(new Set([...allDeletedOrders, ...serverDeleted]));
+        const delSet = new Set(mergedDeleted);
+        try {
+          localStorage.setItem("wcrm_deleted_order_ids", JSON.stringify(mergedDeleted));
+        } catch {}
+
+        if (Array.isArray(result.data.orders)) {
+          result.data.orders = result.data.orders.filter(
+            (o: any) => o && o.id && !delSet.has(o.id) && !o.isDeleted
+          );
+        }
+        result.data.deletedOrderIds = mergedDeleted;
+
         localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
         window.dispatchEvent(new Event("wcrm_store_updated"));
       }
@@ -175,9 +216,24 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     if (response.ok) {
       isCloudOnline = true;
       const payload = await response.json();
-      if (payload.data && typeof payload.data === "object") {
+      if (
+        payload.data &&
+        typeof payload.data === "object" &&
+        (
+          (Array.isArray(payload.data.employees) && payload.data.employees.length > 0) ||
+          (Array.isArray(payload.data.orders) && payload.data.orders.length > 0) ||
+          payload.data.settings?.shopName
+        )
+      ) {
         const prevRaw = localStorage.getItem(STORAGE_KEY);
         const prevStore = prevRaw ? JSON.parse(prevRaw) : null;
+
+        // Never let an empty employees array erase local employees
+        if (!Array.isArray(payload.data.employees) || payload.data.employees.length === 0) {
+          if (prevStore && Array.isArray(prevStore.employees) && prevStore.employees.length > 0) {
+            payload.data.employees = prevStore.employees;
+          }
+        }
 
         setLocalStoreVersion(payload.version || 1);
         if (payload.updated_at) {
@@ -185,18 +241,40 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           localStorage.setItem(UPDATED_AT_KEY, payload.updated_at);
         }
 
-        // Protect locally created orders from being erased by race conditions
+        const localDeletedOrdersSet = new Set<string>();
+        try {
+          const raw = localStorage.getItem("wcrm_deleted_order_ids");
+          if (raw) JSON.parse(raw).forEach((id: string) => localDeletedOrdersSet.add(id));
+        } catch {}
+
+        if (Array.isArray(payload.data.deletedOrderIds)) {
+          payload.data.deletedOrderIds.forEach((id: string) => localDeletedOrdersSet.add(id));
+          localStorage.setItem("wcrm_deleted_order_ids", JSON.stringify(Array.from(localDeletedOrdersSet)));
+        }
+
+        // Filter payload.data.orders against tombstones
+        payload.data.orders = (payload.data.orders || []).filter(
+          (o: any) => o && o.id && !localDeletedOrdersSet.has(o.id) && !o.isDeleted
+        );
+
+        // Protect genuinely new locally created orders from being erased by race conditions
         if (prevStore && Array.isArray(prevStore.orders)) {
           const serverOrderIds = new Set((payload.data.orders || []).map((o: any) => o.id));
-          const unsyncedLocalOrders = prevStore.orders.filter(
-            (o: any) => o && o.id && !serverOrderIds.has(o.id) && !o.isDeleted
-          );
+          const now = Date.now();
+          const unsyncedLocalOrders = prevStore.orders.filter((o: any) => {
+            if (!o || !o.id || serverOrderIds.has(o.id) || o.isDeleted || localDeletedOrdersSet.has(o.id)) {
+              return false;
+            }
+            // Only keep if explicitly pending local sync OR created in the last 15 seconds
+            const createdTs = (o as any)._createdTimestamp || Date.parse(o.created) || 0;
+            return (o as any)._localPendingSync === true || (createdTs > 0 && now - createdTs < 15000);
+          });
           if (unsyncedLocalOrders.length > 0) {
             payload.data.orders = [...unsyncedLocalOrders, ...(payload.data.orders || [])];
             // Push merged state back to cloud so server catches up immediately
             setTimeout(() => {
               const fullStore = { ...prevStore, ...payload.data };
-              pushStoreToCloud(fullStore);
+              pushStoreToCloud(fullStore, { deletedOrderIds: Array.from(localDeletedOrdersSet) });
             }, 300);
           }
         }

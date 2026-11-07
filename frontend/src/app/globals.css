@@ -79,6 +79,16 @@
 }
 
 @layer base {
+  html {
+    font-size: 16px;
+  }
+  @media (max-width: 640px) {
+    html {
+      /* Increased by ~10% on mobile screens for 1-2 numbers larger, ultra-readable text */
+      font-size: 17.5px;
+    }
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);

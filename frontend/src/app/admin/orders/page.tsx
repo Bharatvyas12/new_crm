@@ -29,11 +29,14 @@ import {
 
 import {
   getCRMStore,
+  getDeletedOrderIds,
   saveCRMStore,
   registerOrderInStore,
   updateOrderStatusInStore,
   deleteOrderInStore,
   subscribeToCRMStore,
+  getOrderTimestamp,
+  sortOrdersNewestFirst,
   OrderItem,
   EmployeeItem,
 } from "@/lib/store";
@@ -155,7 +158,13 @@ export default function OrdersPage() {
     showToast("Order removed from queue");
   };
 
+  const [sortBy, setSortBy] = useState<"NEWEST" | "OLDEST" | "PRIORITY" | "CUSTOMER">("NEWEST");
+
   const filteredOrders = orders.filter((ord) => {
+    const deletedSet = getDeletedOrderIds();
+    if (ord.isDeleted || deletedSet.has(ord.id)) {
+      return false;
+    }
     if (statusFilter !== "Any" && ord.status !== statusFilter) {
       return false;
     }
@@ -169,6 +178,27 @@ export default function OrdersPage() {
       if (!match) return false;
     }
     return true;
+  });
+
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
+    if (sortBy === "NEWEST" || sortBy === "OLDEST") {
+      const timeA = getOrderTimestamp(a);
+      const timeB = getOrderTimestamp(b);
+      if (timeB !== timeA) {
+        return sortBy === "NEWEST" ? timeB - timeA : timeA - timeB;
+      }
+      const codeA = parseInt(String(a.orderCode || "").replace(/\D/g, "") || "0", 10);
+      const codeB = parseInt(String(b.orderCode || "").replace(/\D/g, "") || "0", 10);
+      return sortBy === "NEWEST" ? codeB - codeA : codeA - codeB;
+    }
+    if (sortBy === "CUSTOMER") {
+      return (a.customerName || "").localeCompare(b.customerName || "");
+    }
+    if (sortBy === "PRIORITY") {
+      const weight: Record<string, number> = { Urgent: 3, High: 2, Normal: 1 };
+      return (weight[b.priority || "Normal"] || 1) - (weight[a.priority || "Normal"] || 1);
+    }
+    return 0;
   });
 
   const getStatusBadge = (status: OrderItem["status"]) => {
@@ -264,14 +294,14 @@ export default function OrdersPage() {
 
       {/* Search & Filter Bar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
           {/* Status Filter */}
-          <div className="sm:col-span-4 space-y-1.5">
+          <div className="sm:col-span-3 space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">Status</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium cursor-pointer"
             >
               <option value="Any">Any Status</option>
               <option value="Broadcasted">Broadcasted (Pool)</option>
@@ -282,8 +312,23 @@ export default function OrdersPage() {
             </select>
           </div>
 
+          {/* Sort By Date/Time */}
+          <div className="sm:col-span-3 space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Sort By Date / Time</label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium cursor-pointer"
+            >
+              <option value="NEWEST">Date & Time (Newest First)</option>
+              <option value="OLDEST">Date & Time (Oldest First)</option>
+              <option value="PRIORITY">Priority (Urgent First)</option>
+              <option value="CUSTOMER">Customer Name (A-Z)</option>
+            </select>
+          </div>
+
           {/* Search */}
-          <div className="sm:col-span-6 space-y-1.5">
+          <div className="sm:col-span-4 space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">Search Orders</label>
             <div className="relative">
               <input
@@ -325,7 +370,7 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {filteredOrders.map((order) => (
+              {sortedOrders.map((order) => (
                 <tr
                   key={order.id}
                   className="hover:bg-blue-50/40 transition-colors group cursor-pointer"

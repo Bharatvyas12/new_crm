@@ -15,6 +15,7 @@ export interface ShopSettings {
   shiftStart: string;
   shiftEnd: string;
   requiredDailyHours: number;
+  allowedBreakMinutes?: number;
   gracePeriodMinutes: number;
   qrRotationSeconds: number;
   lastUpdated: string;
@@ -93,6 +94,11 @@ export interface OrderItem {
   assignedToName?: string;
   createdByName?: string;
   createdByRole?: "ADMIN" | "EMPLOYEE";
+  isDeleted?: boolean;
+  _createdTimestamp?: number;
+  _updatedTimestamp?: number;
+  updatedAt?: string;
+  _localPendingSync?: boolean;
 }
 
 export interface AttendanceRecord {
@@ -186,6 +192,8 @@ export interface ActiveShiftState {
   checkOutTime?: string;
   checkOutTimestamp?: number;
   breakStartedAt?: number;
+  breakStartTime?: string;
+  breakEndTime?: string;
   totalBreakSeconds: number;
   date: string;
   distanceM: number;
@@ -289,6 +297,8 @@ export interface CRMStoreData {
   leaves: LeaveRequest[];
   complaints: ComplaintItem[];
   roles: RoleItem[];
+  deletedOrderIds?: string[];
+  deletedTaskIds?: string[];
 }
 
 // Clean baseline store data for clean real-time operational use
@@ -305,6 +315,7 @@ export const cleanBaselineStore: CRMStoreData = {
     shiftStart: "09:00",
     shiftEnd: "19:00",
     requiredDailyHours: 10,
+    allowedBreakMinutes: 60,
     gracePeriodMinutes: 15,
     qrRotationSeconds: 45,
     lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
@@ -330,6 +341,291 @@ export const cleanBaselineStore: CRMStoreData = {
       casualLeaves: 12,
       sickLeaves: 8,
     },
+    {
+      id: "2",
+      code: "E001",
+      name: "Bharat vyas",
+      email: "bharat1@crm.com",
+      department: "Operations",
+      designation: "Supervisor",
+      type: "Full Time",
+      status: "Active",
+      joined: "Oct 01, 2026",
+      phone: "9829012345",
+      initialPassword: "Emp@2026",
+      baseSalary: 35000,
+      bankAccount: "112233445566",
+      bankIfsc: "SBIN0004321",
+      upiId: "bharat@oksbi",
+      casualLeaves: 8,
+      sickLeaves: 6.5,
+    },
+    {
+      id: "3",
+      code: "EMP002",
+      name: "Priya Sharma",
+      email: "priya@crm.com",
+      department: "Sales",
+      designation: "Senior Sales Lead",
+      type: "Full Time",
+      status: "Active",
+      joined: "Jan 15, 2026",
+      phone: "9876501234",
+      initialPassword: "Emp@2026",
+      baseSalary: 32000,
+      bankAccount: "998877665544",
+      bankIfsc: "HDFC0001234",
+      upiId: "priya@okhdfc",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "4",
+      code: "EMP003",
+      name: "Rahul Verma",
+      email: "rahul@crm.com",
+      department: "Operations",
+      designation: "Dispatch Manager",
+      type: "Full Time",
+      status: "Active",
+      joined: "Feb 01, 2026",
+      phone: "9876501235",
+      initialPassword: "Emp@2026",
+      baseSalary: 30000,
+      bankAccount: "223344556677",
+      bankIfsc: "ICIC0001234",
+      upiId: "rahul@okicici",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "5",
+      code: "EMP004",
+      name: "Amit Kumar",
+      email: "amit@crm.com",
+      department: "Dispatch",
+      designation: "Field Executive",
+      type: "Full Time",
+      status: "Active",
+      joined: "Feb 10, 2026",
+      phone: "9876501236",
+      initialPassword: "Emp@2026",
+      baseSalary: 28000,
+      bankAccount: "334455667788",
+      bankIfsc: "SBIN0001234",
+      upiId: "amit@oksbi",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "6",
+      code: "EMP005",
+      name: "Suresh Patel",
+      email: "suresh@crm.com",
+      department: "Inventory",
+      designation: "Inventory Assistant",
+      type: "Full Time",
+      status: "Active",
+      joined: "Feb 15, 2026",
+      phone: "9876501237",
+      initialPassword: "Emp@2026",
+      baseSalary: 26000,
+      bankAccount: "445566778899",
+      bankIfsc: "BARB0001234",
+      upiId: "suresh@okaxis",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "7",
+      code: "EMP006",
+      name: "Vikram Singh",
+      email: "vikram@crm.com",
+      department: "Delivery",
+      designation: "Delivery Associate",
+      type: "Full Time",
+      status: "Active",
+      joined: "Mar 01, 2026",
+      phone: "9876501238",
+      initialPassword: "Emp@2026",
+      baseSalary: 25000,
+      bankAccount: "556677889900",
+      bankIfsc: "PUNB0001234",
+      upiId: "vikram@okpnb",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "8",
+      code: "EMP007",
+      name: "Deepak Joshi",
+      email: "deepak@crm.com",
+      department: "Operations",
+      designation: "Shop Floor Lead",
+      type: "Full Time",
+      status: "Active",
+      joined: "Mar 10, 2026",
+      phone: "9876501239",
+      initialPassword: "Emp@2026",
+      baseSalary: 27000,
+      bankAccount: "667788990011",
+      bankIfsc: "HDFC0005678",
+      upiId: "deepak@okhdfc",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "9",
+      code: "EMP008",
+      name: "Manish Jangid",
+      email: "manish@crm.com",
+      department: "Packaging",
+      designation: "Packing Specialist",
+      type: "Full Time",
+      status: "Active",
+      joined: "Mar 15, 2026",
+      phone: "9876501240",
+      initialPassword: "Emp@2026",
+      baseSalary: 24000,
+      bankAccount: "778899001122",
+      bankIfsc: "SBIN0005678",
+      upiId: "manish@oksbi",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "10",
+      code: "EMP009",
+      name: "Rakesh Sharma",
+      email: "rakesh@crm.com",
+      department: "Sales",
+      designation: "Counter Sales",
+      type: "Full Time",
+      status: "Active",
+      joined: "Apr 01, 2026",
+      phone: "9876501241",
+      initialPassword: "Emp@2026",
+      baseSalary: 26000,
+      bankAccount: "889900112233",
+      bankIfsc: "ICIC0005678",
+      upiId: "rakesh@okicici",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "11",
+      code: "EMP010",
+      name: "Sunil Meena",
+      email: "sunil@crm.com",
+      department: "Field",
+      designation: "Field Staff",
+      type: "Full Time",
+      status: "Active",
+      joined: "Apr 15, 2026",
+      phone: "9876501242",
+      initialPassword: "Emp@2026",
+      baseSalary: 25000,
+      bankAccount: "990011223344",
+      bankIfsc: "BARB0005678",
+      upiId: "sunil@okbarb",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "12",
+      code: "EMP011",
+      name: "Pooja Gupta",
+      email: "pooja@crm.com",
+      department: "Accounts",
+      designation: "Accounts Assistant",
+      type: "Full Time",
+      status: "Active",
+      joined: "May 01, 2026",
+      phone: "9876501243",
+      initialPassword: "Emp@2026",
+      baseSalary: 28000,
+      bankAccount: "110022334455",
+      bankIfsc: "HDFC0009999",
+      upiId: "pooja@okhdfc",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "13",
+      code: "EMP012",
+      name: "Ajay Soni",
+      email: "ajay@crm.com",
+      department: "Inventory",
+      designation: "Stock Handler",
+      type: "Full Time",
+      status: "Active",
+      joined: "May 15, 2026",
+      phone: "9876501244",
+      initialPassword: "Emp@2026",
+      baseSalary: 24000,
+      bankAccount: "220033445566",
+      bankIfsc: "SBIN0009999",
+      upiId: "ajay@oksbi",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "14",
+      code: "EMP013",
+      name: "Naveen Kumawat",
+      email: "naveen@crm.com",
+      department: "Logistics",
+      designation: "Logistics Coordinator",
+      type: "Full Time",
+      status: "Active",
+      joined: "Jun 01, 2026",
+      phone: "9876501245",
+      initialPassword: "Emp@2026",
+      baseSalary: 26000,
+      bankAccount: "330044556677",
+      bankIfsc: "ICIC0009999",
+      upiId: "naveen@okicici",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "15",
+      code: "EMP014",
+      name: "Pankaj Yadav",
+      email: "pankaj@crm.com",
+      department: "Store",
+      designation: "Store Associate",
+      type: "Full Time",
+      status: "Active",
+      joined: "Jun 15, 2026",
+      phone: "9876501246",
+      initialPassword: "Emp@2026",
+      baseSalary: 24000,
+      bankAccount: "440055667788",
+      bankIfsc: "BARB0009999",
+      upiId: "pankaj@okbarb",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
+    {
+      id: "16",
+      code: "EMP015",
+      name: "Kiran Choudhary",
+      email: "kiran@crm.com",
+      department: "Orders",
+      designation: "Order Processing Lead",
+      type: "Full Time",
+      status: "Active",
+      joined: "Jul 01, 2026",
+      phone: "9876501247",
+      initialPassword: "Emp@2026",
+      baseSalary: 27000,
+      bankAccount: "550066778899",
+      bankIfsc: "HDFC0008888",
+      upiId: "kiran@okhdfc",
+      casualLeaves: 10,
+      sickLeaves: 8,
+    },
   ],
   advances: [],
   ledger: [],
@@ -340,9 +636,30 @@ export const cleanBaselineStore: CRMStoreData = {
   leaves: [],
   complaints: [],
   roles: initialRoles,
+  deletedOrderIds: [],
 };
 
 export const STORAGE_KEY = "wcrm_unified_store_v4";
+export const DELETED_ORDERS_KEY = "wcrm_deleted_order_ids";
+
+export const getDeletedOrderIds = (): Set<string> => {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_ORDERS_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set();
+};
+
+export const addDeletedOrderId = (orderId: string) => {
+  if (typeof window === "undefined" || !orderId) return;
+  try {
+    const set = getDeletedOrderIds();
+    set.add(orderId);
+    const arr = Array.from(set).slice(-500);
+    localStorage.setItem(DELETED_ORDERS_KEY, JSON.stringify(arr));
+  } catch {}
+};
 
 export const getCRMStore = (): CRMStoreData => {
   if (typeof window === "undefined") return cleanBaselineStore;
@@ -358,11 +675,20 @@ export const getCRMStore = (): CRMStoreData => {
       return cleanBaselineStore;
     }
     const parsed = JSON.parse(raw);
+    const deletedSet = getDeletedOrderIds();
+    if (Array.isArray(parsed.deletedOrderIds)) {
+      parsed.deletedOrderIds.forEach((id: string) => deletedSet.add(id));
+    }
+    const rawOrders = parsed.orders || [];
+    const validOrders = rawOrders.filter(
+      (o: any) => o && o.id && !deletedSet.has(o.id) && !o.isDeleted
+    );
+
     return {
       ...cleanBaselineStore,
       ...parsed,
       activeShifts: parsed.activeShifts || {},
-      orders: parsed.orders || [],
+      orders: validOrders,
       tasks: parsed.tasks || [],
       attendance: parsed.attendance || [],
       corrections: parsed.corrections || [],
@@ -370,9 +696,12 @@ export const getCRMStore = (): CRMStoreData => {
       advances: parsed.advances || [],
       leaves: parsed.leaves || [],
       ledger: parsed.ledger || [],
-      employees: parsed.employees || cleanBaselineStore.employees,
-      settings: parsed.settings || cleanBaselineStore.settings,
+      employees: (Array.isArray(parsed.employees) && parsed.employees.length > 0)
+        ? parsed.employees
+        : cleanBaselineStore.employees,
+      settings: { ...cleanBaselineStore.settings, ...(parsed.settings || {}) },
       roles: parsed.roles || cleanBaselineStore.roles,
+      deletedOrderIds: Array.from(deletedSet),
     };
   } catch (err) {
     console.error("Failed to load store:", err);
@@ -386,6 +715,23 @@ export const saveCRMStore = (
 ) => {
   if (typeof window === "undefined") return;
   try {
+    const deletedSet = getDeletedOrderIds();
+    if (options?.deletedOrderIds) {
+      options.deletedOrderIds.forEach((id) => deletedSet.add(id));
+    }
+    if (Array.isArray(data.deletedOrderIds)) {
+      data.deletedOrderIds.forEach((id) => deletedSet.add(id));
+    }
+    const allDeleted = Array.from(deletedSet);
+    data.deletedOrderIds = allDeleted;
+
+    // Filter out deleted orders from data.orders
+    if (Array.isArray(data.orders)) {
+      data.orders = data.orders.filter(
+        (o) => o && o.id && !deletedSet.has(o.id) && !o.isDeleted
+      );
+    }
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     window.dispatchEvent(new Event("wcrm_store_updated"));
 
@@ -399,7 +745,10 @@ export const saveCRMStore = (
     }
 
     // Push asynchronously to the cloud backend for cross-device sync
-    pushStoreToCloud(data, options);
+    pushStoreToCloud(data, {
+      deletedTaskIds: options?.deletedTaskIds,
+      deletedOrderIds: allDeleted,
+    });
   } catch (err) {
     console.error("Failed to save store:", err);
   }
@@ -734,6 +1083,50 @@ export const addLedgerEntryInStore = (entry: Omit<LedgerEntry, "id" | "runningBa
 };
 
 // ORDER ACTIONS
+export const getOrderTimestamp = (order: OrderItem): number => {
+  if (!order) return 0;
+  if (typeof (order as any)._updatedTimestamp === "number" && (order as any)._updatedTimestamp > 0) {
+    return (order as any)._updatedTimestamp;
+  }
+  if (typeof (order as any)._createdTimestamp === "number" && (order as any)._createdTimestamp > 0) {
+    return (order as any)._createdTimestamp;
+  }
+  if ((order as any).updatedAt) {
+    const t = Date.parse((order as any).updatedAt);
+    if (!isNaN(t) && t > 0) return t;
+  }
+  const idMatch = String(order.id || "").match(/\d{12,14}/);
+  if (idMatch) {
+    const t = parseInt(idMatch[0], 10);
+    if (!isNaN(t) && t > 1000000000000) return t;
+  }
+  if (order.created) {
+    const direct = Date.parse(order.created);
+    if (!isNaN(direct) && direct > 0) return direct;
+    const dmy = String(order.created).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmy) {
+      const t = new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10)).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+  }
+  const codeNum = parseInt(String(order.orderCode || "").replace(/\D/g, "") || "0", 10);
+  if (codeNum > 0) return codeNum;
+  return 0;
+};
+
+export const sortOrdersNewestFirst = (list: OrderItem[]): OrderItem[] => {
+  return [...list].sort((a, b) => {
+    const timeA = getOrderTimestamp(a);
+    const timeB = getOrderTimestamp(b);
+    if (timeB !== timeA) {
+      return timeB - timeA;
+    }
+    const codeA = parseInt(String(a.orderCode || "").replace(/\D/g, "") || "0", 10);
+    const codeB = parseInt(String(b.orderCode || "").replace(/\D/g, "") || "0", 10);
+    return codeB - codeA;
+  });
+};
+
 export const registerOrderInStore = (data: {
   orderCode?: string;
   customerName: string;
@@ -753,9 +1146,11 @@ export const registerOrderInStore = (data: {
 }) => {
   const store = getCRMStore();
   const isDirectSpecific = data.broadcastTarget === "SPECIFIC" && Boolean(data.assignedToName);
+  const nowTs = Date.now();
+  const nowIso = new Date().toISOString();
 
   const newOrder: OrderItem = {
-    id: `ord-${Date.now()}`,
+    id: `ord-${nowTs}`,
     orderCode: data.orderCode || `ORD-${String(store.orders.length + 1).padStart(4, "0")}`,
     customerName: data.customerName,
     phone: data.phone,
@@ -788,9 +1183,13 @@ export const registerOrderInStore = (data: {
       hour: "2-digit",
       minute: "2-digit",
     }),
+    _createdTimestamp: nowTs,
+    _updatedTimestamp: nowTs,
+    updatedAt: nowIso,
+    _localPendingSync: true,
   };
 
-  store.orders = [newOrder, ...store.orders];
+  store.orders = [newOrder, ...(store.orders || []).filter((o) => o.id !== newOrder.id)];
   saveCRMStore(store);
   return newOrder;
 };
@@ -817,6 +1216,8 @@ export const claimOrderInStore = (orderId: string, employeeName: string) => {
   if (order) {
     order.status = "Claimed";
     order.claimedBy = employeeName;
+    order._updatedTimestamp = Date.now();
+    order.updatedAt = new Date().toISOString();
     order.claimedAt = new Date().toLocaleDateString("en-US", {
       month: "short",
       day: "2-digit",
@@ -824,6 +1225,8 @@ export const claimOrderInStore = (orderId: string, employeeName: string) => {
       hour: "2-digit",
       minute: "2-digit",
     });
+    // Move updated order to top of list
+    store.orders = [order, ...(store.orders || []).filter((o) => o.id !== orderId)];
     saveCRMStore(store);
     return true;
   }
@@ -835,6 +1238,8 @@ export const updateOrderStatusInStore = (orderId: string, status: OrderItem["sta
   const order = store.orders.find((o) => o.id === orderId);
   if (order) {
     order.status = status;
+    order._updatedTimestamp = Date.now();
+    order.updatedAt = new Date().toISOString();
     if (status === "Delivered") {
       order.deliveredAt = new Date().toLocaleDateString("en-US", {
         month: "short",
@@ -844,6 +1249,8 @@ export const updateOrderStatusInStore = (orderId: string, status: OrderItem["sta
         minute: "2-digit",
       });
     }
+    // Move updated order to top of list
+    store.orders = [order, ...(store.orders || []).filter((o) => o.id !== orderId)];
     saveCRMStore(store);
     return true;
   }
@@ -851,9 +1258,15 @@ export const updateOrderStatusInStore = (orderId: string, status: OrderItem["sta
 };
 
 export const deleteOrderInStore = (orderId: string) => {
+  addDeletedOrderId(orderId);
   const store = getCRMStore();
-  store.orders = store.orders.filter((o) => o.id !== orderId);
-  saveCRMStore(store, { deletedOrderIds: [orderId] });
+  store.orders = (store.orders || []).filter((o) => o.id !== orderId);
+  if (!store.deletedOrderIds) store.deletedOrderIds = [];
+  if (!store.deletedOrderIds.includes(orderId)) {
+    store.deletedOrderIds.push(orderId);
+  }
+  const allDeleted = Array.from(getDeletedOrderIds());
+  saveCRMStore(store, { deletedOrderIds: allDeleted });
   return true;
 };
 
@@ -1052,12 +1465,18 @@ export const getDynamicWorkedHours = (
     }
 
     if (checkInTimestamp) {
-      const breakSec = shift?.totalBreakSeconds || 0;
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - checkInTimestamp) / 1000) - breakSec);
-      const hours = Math.floor(elapsedSec / 3600);
-      const mins = Math.floor((elapsedSec % 3600) / 60);
-      const totalMins = Math.floor(elapsedSec / 60);
-      const decimal = Number((elapsedSec / 3600).toFixed(1));
+      const store = getCRMStore();
+      const allowedBreakSec = ((store.settings?.allowedBreakMinutes != null ? store.settings.allowedBreakMinutes : 60)) * 60;
+      const ongoingBreak = shift?.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
+      const totalBreakSec = (shift?.totalBreakSeconds || 0) + ongoingBreak;
+      const excessBreakSec = Math.max(0, totalBreakSec - allowedBreakSec);
+
+      const grossElapsedSec = Math.max(0, Math.floor((Date.now() - checkInTimestamp) / 1000));
+      const netWorkedSec = Math.max(0, grossElapsedSec - excessBreakSec);
+      const hours = Math.floor(netWorkedSec / 3600);
+      const mins = Math.floor((netWorkedSec % 3600) / 60);
+      const totalMins = Math.floor(netWorkedSec / 60);
+      const decimal = Number((netWorkedSec / 3600).toFixed(1));
       const activeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
       return {
@@ -1079,8 +1498,10 @@ export const startBreakInStore = (employeeCode: string) => {
   const store = getCRMStore();
   if (!store.activeShifts) store.activeShifts = {};
   if (store.activeShifts[employeeCode]) {
+    const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     store.activeShifts[employeeCode].shiftState = "ON_BREAK";
     store.activeShifts[employeeCode].breakStartedAt = Date.now();
+    store.activeShifts[employeeCode].breakStartTime = nowTime;
     saveCRMStore(store);
     return true;
   }
@@ -1092,10 +1513,12 @@ export const endBreakInStore = (employeeCode: string) => {
   if (!store.activeShifts) store.activeShifts = {};
   if (store.activeShifts[employeeCode]) {
     const shift = store.activeShifts[employeeCode];
+    const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     if (shift.breakStartedAt) {
       shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
       shift.breakStartedAt = undefined;
     }
+    shift.breakEndTime = nowTime;
     shift.shiftState = "ACTIVE";
     saveCRMStore(store);
     return true;
@@ -1118,10 +1541,17 @@ export const checkOutEmployeeInStore = (employeeCode: string) => {
       shift.breakStartedAt = undefined;
     }
 
-    const totalSeconds = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0));
-    const totalHours = Number((totalSeconds / 3600).toFixed(1));
-    const overtimeHours = totalHours > 10 ? Number((totalHours - 10).toFixed(1)) : 0;
-    const classification: AttendanceRecord["classification"] = totalHours >= 8 ? "FULL_DAY" : totalHours >= 4 ? "HALF_DAY" : "PARTIAL_DAY";
+    const allowedBreakSec = ((store.settings?.allowedBreakMinutes != null ? store.settings.allowedBreakMinutes : 60)) * 60;
+    const totalBreakSec = shift.totalBreakSeconds || 0;
+    const excessBreakSec = Math.max(0, totalBreakSec - allowedBreakSec);
+
+    const grossElapsedSec = Math.max(0, Math.floor(((shift.checkOutTimestamp || Date.now()) - shift.checkInTimestamp) / 1000));
+    const netWorkedSec = Math.max(0, grossElapsedSec - excessBreakSec);
+    const totalHours = Number((netWorkedSec / 3600).toFixed(1));
+    const requiredHours = Number(store.settings?.requiredDailyHours) || 10;
+    const classification: AttendanceRecord["classification"] =
+      totalHours >= requiredHours ? "FULL_DAY" : totalHours >= requiredHours / 2 ? "HALF_DAY" : "PARTIAL_DAY";
+    const overtimeHours = 0; // Overtime removed per client salary policy
 
     // Update in store.attendance
     const today = shift.date;

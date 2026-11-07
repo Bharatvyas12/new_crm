@@ -317,11 +317,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Brand Header */}
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
           <Link href="/admin" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#1a73e8] text-white font-bold flex items-center justify-center text-sm shadow-xs">
-              W
+            <div className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+              <img src="/mahesh-logo.png" alt="Mahesh Enterprises" className="w-full h-full object-contain" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-sm tracking-tight text-slate-900">Workforce CRM</span>
+              <span className="font-bold text-sm tracking-tight text-slate-900">Mahesh Enterprises</span>
               <span className="text-[10px] text-slate-600 font-medium -mt-0.5">{t("adminWorkspace", "Admin Workspace")}</span>
             </div>
           </Link>

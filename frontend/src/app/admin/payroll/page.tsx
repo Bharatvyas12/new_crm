@@ -37,12 +37,10 @@ export interface EmployeeSalaryRecord {
   department: string;
   designation: string;
   baseSalary: number;
+  dailyRate: number;
   workedDays: number;
   totalDaysInMonth: number;
-  overtimeHours: number;
-  overtimePay: number;
-  unpaidLeaveDays: number;
-  leaveDeductions: number;
+  earnedSalary: number;
   advanceDeduction: number;
   netPay: number;
   bankAccount: string;
@@ -51,49 +49,74 @@ export interface EmployeeSalaryRecord {
   status: "CALCULATED" | "APPROVED" | "PAID";
 }
 
+function getDaysInMonthFromStr(monthStr: string): number {
+  const months: Record<string, number> = {
+    january: 31, february: 28, march: 31, april: 30, may: 31, june: 30,
+    july: 31, august: 31, september: 30, october: 31, november: 30, december: 31
+  };
+  const lower = monthStr.toLowerCase();
+  for (const [m, days] of Object.entries(months)) {
+    if (lower.includes(m)) return days;
+  }
+  return 30;
+}
+
 function computeLivePayrollRecords(store: CRMStoreData, currentMonthStr: string): EmployeeSalaryRecord[] {
-  // Filter out system administrator so payroll covers operational staff
+  // Operational staff
   const staff = (store.employees || []).filter(
     (e) => !e.code.includes("ADMIN") && e.department !== "Management"
   );
 
+  const requiredHours = Number(store.settings?.requiredDailyHours) || 10;
+  const totalDaysInMonth = getDaysInMonthFromStr(currentMonthStr);
+
   return staff.map((emp) => {
     const empCode = emp.code.trim().toUpperCase();
 
-    // 1. Attendance calculation from store
+    // 1. Attendance calculation from store for this employee
     const empAttendance = (store.attendance || []).filter(
       (a) => a.employeeCode.trim().toUpperCase() === empCode
     );
-    const presentRecords = empAttendance.filter(
-      (a) => a.status === "Present" || a.status === "Late"
-    );
-    
-    // Check if active today
+
+    // Calculate worked days:
+    // If worked hours >= requiredDailyHours, counts as 1 full day
+    // If worked hours >= requiredDailyHours / 2, counts as 0.5 day
+    let workedDays = 0;
+    empAttendance.forEach((a) => {
+      const worked = Number(a.workedHours) || 0;
+      if (worked >= requiredHours || a.classification === "FULL_DAY" || a.status === "Present") {
+        workedDays += 1;
+      } else if (worked >= requiredHours / 2 || a.classification === "HALF_DAY") {
+        workedDays += 0.5;
+      } else if (worked > 0) {
+        workedDays += Number((worked / requiredHours).toFixed(1));
+      }
+    });
+
+    // Check if active today and not yet logged in store.attendance
     const shift = store.activeShifts ? store.activeShifts[emp.code] : undefined;
-    const isWorkingToday = shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK");
-    const workedDays = isWorkingToday && !presentRecords.some(r => r.date === shift.date) 
-      ? presentRecords.length + 1 
-      : presentRecords.length;
+    const isWorkingToday = shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK" || shift.shiftState === "COMPLETED");
+    if (isWorkingToday && !empAttendance.some((r) => r.date === shift.date)) {
+      const workedSecs = shift.checkInTimestamp
+        ? Math.floor(((shift.checkOutTimestamp || Date.now()) - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0)
+        : 0;
+      const workedHrs = workedSecs / 3600;
+      if (workedHrs >= requiredHours) {
+        workedDays += 1;
+      } else if (workedHrs >= requiredHours / 2) {
+        workedDays += 0.5;
+      } else if (workedHrs > 0) {
+        workedDays += Number((workedHrs / requiredHours).toFixed(1));
+      }
+    }
 
-    const totalDaysInMonth = 26;
-
-    // 2. Overtime calculation
-    const overtimeHours = empAttendance.reduce((sum, a) => sum + (Number(a.overtimeHours) || 0), 0);
     const baseSalary = Number(emp.baseSalary) || 0;
     const dailyRate = totalDaysInMonth > 0 ? Math.round(baseSalary / totalDaysInMonth) : 0;
-    const hourlyRate = Math.round(dailyRate / 9);
-    const overtimePay = Math.round(overtimeHours * (hourlyRate * 1.5));
 
-    // 3. Unpaid leave deductions
-    const empLeaves = (store.leaves || []).filter(
-      (l) => l.employeeCode.trim().toUpperCase() === empCode && l.status === "APPROVED"
-    );
-    const unpaidLeaveDays = empLeaves
-      .filter((l) => l.leaveType === "Unpaid Leave")
-      .reduce((sum, l) => sum + (Number(l.days) || 0), 0);
-    const leaveDeductions = unpaidLeaveDays * dailyRate;
+    // Earned salary strictly based on worked days. Overtime is completely excluded.
+    const earnedSalary = Math.round(workedDays * dailyRate);
 
-    // 4. Advance recovery auto-deduction
+    // Advance recovery auto-deduction
     const empAdvances = (store.advances || []).filter(
       (adv) => (adv.code || adv.employeeId || "").trim().toUpperCase() === empCode && adv.status === "Disbursed"
     );
@@ -101,7 +124,7 @@ function computeLivePayrollRecords(store: CRMStoreData, currentMonthStr: string)
       .filter((adv) => adv.mode === "SALARY_DEDUCTION")
       .reduce((sum, adv) => sum + (Number(adv.amount) || 0), 0);
 
-    const netPay = Math.max(0, baseSalary + overtimePay - leaveDeductions - advanceDeduction);
+    const netPay = Math.max(0, earnedSalary - advanceDeduction);
 
     return {
       employeeId: emp.id,
@@ -110,12 +133,10 @@ function computeLivePayrollRecords(store: CRMStoreData, currentMonthStr: string)
       department: emp.department || "Operations",
       designation: emp.designation || "Staff",
       baseSalary,
+      dailyRate,
       workedDays,
       totalDaysInMonth,
-      overtimeHours,
-      overtimePay,
-      unpaidLeaveDays,
-      leaveDeductions,
+      earnedSalary,
       advanceDeduction,
       netPay,
       bankAccount: emp.bankAccount || "—",
@@ -195,13 +216,11 @@ export default function PayrollPage() {
       "Employee Name",
       "Department",
       "Designation",
-      "Base Salary",
+      "Monthly Base Salary",
+      "Daily Rate",
       "Days Worked",
-      "Total Days",
-      "Overtime Hours",
-      "Overtime Pay",
-      "Unpaid Leave Days",
-      "Leave Deductions",
+      "Total Month Days",
+      "Gross Earned Salary",
       "Advance Deductions",
       "Net Payable",
       "Bank Account",
@@ -216,12 +235,10 @@ export default function PayrollPage() {
       `"${r.department}"`,
       `"${r.designation}"`,
       r.baseSalary,
+      r.dailyRate,
       r.workedDays,
       r.totalDaysInMonth,
-      r.overtimeHours,
-      r.overtimePay,
-      r.unpaidLeaveDays,
-      r.leaveDeductions,
+      r.earnedSalary,
       r.advanceDeduction,
       r.netPay,
       `"${r.bankAccount}"`,
@@ -243,9 +260,9 @@ export default function PayrollPage() {
   };
 
   // KPIs
-  const grossTotal = records.reduce((acc, curr) => acc + curr.baseSalary + curr.overtimePay, 0);
+  const grossTotal = records.reduce((acc, curr) => acc + curr.earnedSalary, 0);
   const totalDeductions = records.reduce(
-    (acc, curr) => acc + curr.leaveDeductions + curr.advanceDeduction,
+    (acc, curr) => acc + curr.advanceDeduction,
     0
   );
   const totalNetPayout = records.reduce((acc, curr) => acc + curr.netPay, 0);
@@ -265,7 +282,7 @@ export default function PayrollPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Monthly Payroll Engine</h1>
           <p className="text-sm text-slate-600 mt-0.5">
-            Automated net salary computation based on real live workforce attendance, overtime, unpaid leave, and advance repayments.
+            Automated net salary computation based on real live attendance (daily working hours target) and advance repayments. No overtime added.
           </p>
         </div>
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
@@ -292,8 +309,8 @@ export default function PayrollPage() {
         <div className="space-y-1">
           <span className="font-bold">Automated Live Computation Formula:</span>
           <p className="text-blue-800 leading-relaxed">
-            <code>Net Payable = Base Salary + Overtime Pay - Unpaid Leave Loss - Disbursed Advance Deductions</code>.
-            All numbers are dynamically calculated from your real CRM employees, attendance logs, and financial advances. Disbursed salaries auto-post to the Double-Entry Ledger.
+            <code>Net Payable = (Monthly Base Salary / Month Days) × Days Worked - Advance Deductions</code>.
+            Each full day is counted when checked-in duration meets or exceeds the daily working hours decided by admin. Overtime is not added to salary. Disbursed salaries auto-post to the Double-Entry Ledger.
           </p>
         </div>
       </div>
@@ -310,9 +327,9 @@ export default function PayrollPage() {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none"
             >
-              <option value="October 2026 (Live Current)">Oct 2026 (Live)</option>
-              <option value="September 2026">Sep 2026</option>
-              <option value="August 2026">Aug 2026</option>
+              <option value="October 2026 (Live Current)">Oct 2026 (Live - 31 Days)</option>
+              <option value="September 2026">Sep 2026 (30 Days)</option>
+              <option value="August 2026">Aug 2026 (31 Days)</option>
             </select>
           </div>
           <div className="text-base font-bold text-slate-900 mt-2 flex items-center gap-2">
@@ -324,22 +341,22 @@ export default function PayrollPage() {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Gross Base & Overtime
+            Total Earned Gross Pay
           </span>
           <div className="text-2xl font-bold text-slate-900 font-mono mt-2">
             ₹{grossTotal.toLocaleString()}
           </div>
-          <div className="text-[11px] text-emerald-600 font-semibold mt-1">Earnings before deductions</div>
+          <div className="text-[11px] text-emerald-600 font-semibold mt-1">Earned based on worked days</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Total Recovered Deductions
+            Total Advance Deductions
           </span>
           <div className="text-2xl font-bold text-red-600 font-mono mt-2">
             -₹{totalDeductions.toLocaleString()}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Advances + Unpaid leaves</div>
+          <div className="text-[11px] text-slate-400 mt-1">Disbursed salary advances</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
@@ -427,10 +444,10 @@ export default function PayrollPage() {
                 <tr>
                   <th className="py-3.5 px-5">Employee</th>
                   <th className="py-3.5 px-5">Department</th>
-                  <th className="py-3.5 px-5 text-right">Base Salary</th>
+                  <th className="py-3.5 px-5 text-right">Monthly Base</th>
+                  <th className="py-3.5 px-5 text-right">Daily Rate</th>
                   <th className="py-3.5 px-5 text-center">Days Worked</th>
-                  <th className="py-3.5 px-5 text-right">Overtime Pay</th>
-                  <th className="py-3.5 px-5 text-right">Leave Loss</th>
+                  <th className="py-3.5 px-5 text-right">Gross Earned Pay</th>
                   <th className="py-3.5 px-5 text-right">Advance Ded.</th>
                   <th className="py-3.5 px-5 text-right">Net Payable</th>
                   <th className="py-3.5 px-5 text-right">Payslip</th>
@@ -451,14 +468,14 @@ export default function PayrollPage() {
                     <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-slate-900">
                       ₹{rec.baseSalary.toLocaleString()}
                     </td>
+                    <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-slate-600">
+                      ₹{rec.dailyRate.toLocaleString()}/day
+                    </td>
                     <td className="py-3.5 px-5 text-center font-mono text-xs">
                       {rec.workedDays}/{rec.totalDaysInMonth}
                     </td>
                     <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-emerald-600">
-                      +{rec.overtimePay ? `₹${rec.overtimePay.toLocaleString()}` : "—"}
-                    </td>
-                    <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-red-600">
-                      {rec.leaveDeductions ? `-₹${rec.leaveDeductions.toLocaleString()}` : "—"}
+                      ₹{rec.earnedSalary.toLocaleString()}
                     </td>
                     <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-amber-600">
                       {rec.advanceDeduction ? `-₹${rec.advanceDeduction.toLocaleString()}` : "—"}
@@ -527,21 +544,21 @@ export default function PayrollPage() {
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Days Worked ({viewingPayslip.workedDays}/{viewingPayslip.totalDaysInMonth}):</span>
-                  <span className="font-mono font-bold text-slate-700">
-                    {viewingPayslip.workedDays} days
+                  <span>Calculated Daily Rate ({viewingPayslip.totalDaysInMonth} days/mo):</span>
+                  <span className="font-mono font-semibold text-slate-700">
+                    ₹{viewingPayslip.dailyRate.toLocaleString()} / day
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Overtime Pay ({viewingPayslip.overtimeHours} hrs):</span>
+                  <span>Days Worked:</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {viewingPayslip.workedDays} / {viewingPayslip.totalDaysInMonth} days
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Gross Earned Salary:</span>
                   <span className="font-mono font-bold text-emerald-600">
-                    +{viewingPayslip.overtimePay ? `₹${viewingPayslip.overtimePay.toLocaleString()}` : "₹0"}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>Unpaid Leave Deductions ({viewingPayslip.unpaidLeaveDays} days):</span>
-                  <span className="font-mono font-bold text-red-600">
-                    -{viewingPayslip.leaveDeductions ? `₹${viewingPayslip.leaveDeductions.toLocaleString()}` : "₹0"}
+                    ₹{viewingPayslip.earnedSalary.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">

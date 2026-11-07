@@ -47,8 +47,8 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
   const [testLoading, setTestLoading] = useState(false);
   const [testMessage, setTestMessage] = useState<string | null>(null);
 
-  const empCode = (user?.employee_id || "E001").trim().toUpperCase();
-  const empName = (user?.full_name || user?.name || "Bharat vyas").trim().toLowerCase();
+  const rawCode = (user?.employee_id || "").trim().toUpperCase();
+  const rawName = (user?.full_name || user?.name || "").trim().toLowerCase();
 
   const playNotificationChime = () => {
     if (!soundEnabled || typeof window === "undefined") return;
@@ -89,24 +89,21 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
             lang === "hi"
               ? "दुकान काउंटर से नए ऑर्डर प्रसारित किए गए हैं। तुरंत क्लेम करें।"
               : "Customer orders waiting for pickup/packing. Claim to begin dispatch.",
-          time: "Live pool",
+          time: lang === "hi" ? "लाइव पूल" : "Live pool",
           urgency: "HIGH",
           link: "/app/orders",
         });
       }
 
-      // 2. Incomplete / Pending Tasks for this employee
+      // 2. Incomplete / Pending Tasks strictly assigned to this employee
       const myIncompleteTasks = (store.tasks || []).filter((t) => {
+        if (t.status !== "Assigned" && t.status !== "In Progress") return false;
         const taskCode = (t.assigneeCode || "").trim().toUpperCase();
         const taskAssignee = (t.assignee || "").trim().toLowerCase();
-        const matchesMe =
-          taskCode === empCode ||
-          taskAssignee === empName ||
-          taskAssignee.includes(empName) ||
-          empName.includes(taskAssignee) ||
-          taskAssignee === "all" ||
-          taskAssignee === "all employees";
-        return matchesMe && (t.status === "Assigned" || t.status === "In Progress");
+        if (rawCode && taskCode && taskCode === rawCode) return true;
+        if (rawName && (taskAssignee === rawName || taskAssignee === "all" || taskAssignee === "all employees")) return true;
+        if (rawName.length >= 3 && taskAssignee.length >= 3 && (taskAssignee.includes(rawName) || rawName.includes(taskAssignee))) return true;
+        return false;
       });
 
       if (myIncompleteTasks.length > 0) {
@@ -119,17 +116,17 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
               : `⏰ ${myIncompleteTasks.length} Incomplete Task(s) Pending`,
           description:
             lang === "hi"
-              ? `आपको सौंपे गए कार्य अधूरे हैं: ${myIncompleteTasks.map((t) => t.title).join(", ")}`
+              ? `आपके जिम्मे कार्य अधूरे हैं: ${myIncompleteTasks.map((t) => t.title).join(", ")}`
               : `Awaiting completion: ${myIncompleteTasks.map((t) => t.title).join(", ")}`,
-          time: "Due today",
+          time: lang === "hi" ? "आज देय" : "Due today",
           urgency: "MEDIUM",
           link: "/app/tasks",
         });
       }
 
       // 3. Active Shift reminder if shift not started
-      const activeShift = store.activeShifts?.[empCode];
-      if (!activeShift || activeShift.shiftState === "NOT_STARTED") {
+      const activeShift = rawCode ? store.activeShifts?.[rawCode] : undefined;
+      if (rawCode && (!activeShift || activeShift.shiftState === "NOT_STARTED")) {
         items.push({
           id: "shift-not-started",
           type: "CORRECTION",
@@ -141,7 +138,7 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
             lang === "hi"
               ? "आज का कार्य समय रिकॉर्ड करने हेतु GPS / QR चेक-इन करें।"
               : "Tap Check-In to record your daily attendance and start shift timer.",
-          time: "Morning",
+          time: lang === "hi" ? "सुबह" : "Morning",
           urgency: "NORMAL",
           link: "/app",
         });
@@ -264,7 +261,7 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
     }
     const unsubscribe = subscribeToCRMStore(computeNotifications);
     return () => unsubscribe();
-  }, [isEmployee, empCode, empName, soundEnabled]);
+  }, [isEmployee, rawCode, rawName, soundEnabled]);
 
   const totalCount = notifications.length;
 
@@ -286,10 +283,10 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-2xs"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200 rounded-3xl shadow-2xl z-50 p-4 space-y-3 animate-in fade-in zoom-in-95">
+          <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:mt-2 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200 rounded-3xl shadow-2xl z-50 p-4 space-y-3 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Bell size={16} className="text-blue-600" />
@@ -302,13 +299,13 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
                   type="button"
                   onClick={() => setSoundEnabled(!soundEnabled)}
                   className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
-                  title={soundEnabled ? "Mute audio chimes" : "Enable audio chimes"}
+                  title={soundEnabled ? (lang === "hi" ? "आवाज बंद करें" : "Mute audio chimes") : (lang === "hi" ? "आवाज चालू करें" : "Enable audio chimes")}
                 >
                   {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
                 >
                   <X size={16} />
                 </button>
@@ -323,7 +320,7 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
                   {lang === "hi" ? "फोन रिंगटोन व पुश अलर्ट" : "Phone Sound & Push Alerts"}
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${hasPerm ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                  {hasPerm ? "✓ Active" : "Action Needed"}
+                  {hasPerm ? (lang === "hi" ? "✓ सक्रिय" : "✓ Active") : (lang === "hi" ? "अनुमति चाहिए" : "Action Needed")}
                 </span>
               </div>
 
@@ -331,7 +328,7 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
                 <button
                   type="button"
                   onClick={async () => {
-                    const ok = await requestPhoneNotificationPermission(empCode);
+                    const ok = await requestPhoneNotificationPermission(rawCode || "EMP");
                     setHasPerm(ok);
                   }}
                   className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
@@ -348,13 +345,13 @@ export function NotificationCenter({ isEmployee = false }: { isEmployee?: boolea
                     playNotificationTune();
                     const res = await triggerTestPhonePush();
                     setTestLoading(false);
-                    setTestMessage(res.success ? `✓ Alert Sent to ${res.registered} phone(s)! Check notification bar.` : "Alert triggered locally.");
+                    setTestMessage(res.success ? (lang === "hi" ? `✓ ${res.registered} फोन पर अलर्ट भेजा गया!` : `✓ Alert Sent to ${res.registered} phone(s)! Check notification bar.`) : (lang === "hi" ? "स्थानीय अलर्ट बजाया गया।" : "Alert triggered locally."));
                     setTimeout(() => setTestMessage(null), 4000);
                   }}
                   className="w-full py-1.5 bg-white hover:bg-slate-50 border border-blue-200 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Volume2 size={13} className="text-blue-600" />
-                  <span>{testLoading ? "Sending..." : "📲 Test Sound Alert (Ringtone & Vibrate)"}</span>
+                  <span>{testLoading ? (lang === "hi" ? "भेज रहे हैं..." : "Sending...") : (lang === "hi" ? "📲 टेस्ट अलर्ट बजाएं (रिंगटोन व कंपन)" : "📲 Test Sound Alert (Ringtone & Vibrate)")}</span>
                 </button>
               )}
 

@@ -10,6 +10,17 @@ def get_clean_database_url() -> str:
     url = (settings.DATABASE_URL or "").strip()
     if not url:
         return "sqlite+aiosqlite:///./test.db"
+
+    # If psycopg is not available (e.g. local dev environment), fallback to SQLite
+    try:
+        import psycopg
+        has_psycopg = True
+    except ImportError:
+        has_psycopg = False
+
+    if not has_psycopg:
+        return "sqlite+aiosqlite:///./test.db"
+
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg://", 1)
     if url.startswith("postgresql://") and not url.startswith("postgresql+psycopg://"):

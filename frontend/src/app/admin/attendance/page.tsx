@@ -25,16 +25,33 @@ import {
   AttendanceRecord,
 } from "@/lib/store";
 
+export interface AttendanceDisplayRecord extends AttendanceRecord {
+  shiftState?: "NOT_STARTED" | "ACTIVE" | "ON_BREAK" | "COMPLETED";
+  breakStartTime?: string;
+  breakEndTime?: string;
+  totalBreakSeconds?: number;
+  ongoingBreakSeconds?: number;
+  excessBreakMinutes?: number;
+}
+
 export default function AdminAttendanceRegisterPage() {
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [records, setRecords] = useState<AttendanceDisplayRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [filter, setFilter] = useState("ALL");
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [requiredDailyHours, setRequiredDailyHours] = useState(10);
+  const [allowedBreakMinutes, setAllowedBreakMinutes] = useState(60);
 
   useEffect(() => {
     const loadRecords = () => {
       const store = getCRMStore();
+      if (store.settings?.requiredDailyHours) {
+        setRequiredDailyHours(Number(store.settings.requiredDailyHours) || 10);
+      }
+      const allowedBreak = Number(store.settings?.allowedBreakMinutes) || 60;
+      setAllowedBreakMinutes(allowedBreak);
+
       const atts = store.attendance || [];
       const employees = store.employees || [];
       const activeShifts = store.activeShifts || {};
@@ -62,11 +79,16 @@ export default function AdminAttendanceRegisterPage() {
       );
 
       // Build roster for selected date
-      const dateRecords: AttendanceRecord[] = staffEmployees.map((emp) => {
+      const dateRecords: AttendanceDisplayRecord[] = staffEmployees.map((emp) => {
         const existing = atts.find(
           (a) => a.employeeCode === emp.code && a.date === targetDateStr
         );
         const shift = activeShifts[emp.code];
+
+        const isOnBreak = shift?.shiftState === "ON_BREAK";
+        const ongoingBreakSec = isOnBreak && shift?.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
+        const totalBreakSec = (shift?.totalBreakSeconds || 0) + ongoingBreakSec;
+        const excessBreakMins = Math.max(0, Math.round((totalBreakSec - allowedBreak * 60) / 60));
 
         // 1. If target is TODAY: Check if on duty (active shift or unclosed checkIn)
         if (isTargetToday) {
@@ -87,7 +109,7 @@ export default function AdminAttendanceRegisterPage() {
                 workedHours: 0,
                 overtimeHours: 0,
                 classification: "PARTIAL_DAY",
-                status: "Present",
+                status: isOnBreak ? ("On Break" as any) : "Present",
                 distanceM: shift?.distanceM || 20,
               },
               shift
@@ -95,7 +117,7 @@ export default function AdminAttendanceRegisterPage() {
 
             const hours = dynamic.hours;
             const classification =
-              hours >= 10 ? "FULL_DAY" : hours >= 5 ? "HALF_DAY" : "PARTIAL_DAY";
+              hours >= requiredDailyHours ? "FULL_DAY" : hours >= requiredDailyHours / 2 ? "HALF_DAY" : "PARTIAL_DAY";
 
             return {
               id: existing?.id || `att-live-${emp.code}`,
@@ -106,10 +128,16 @@ export default function AdminAttendanceRegisterPage() {
               checkIn: shift?.checkInTime || existing?.checkIn || "—",
               checkOut: "—",
               workedHours: hours,
-              overtimeHours: hours > 10 ? Number((hours - 10).toFixed(1)) : 0,
+              overtimeHours: 0,
               classification: classification as any,
-              status: "Present",
+              status: isOnBreak ? ("On Break" as any) : "Present",
               distanceM: shift?.distanceM || existing?.distanceM || 20,
+              shiftState: shift?.shiftState,
+              breakStartTime: shift?.breakStartTime,
+              breakEndTime: shift?.breakEndTime,
+              totalBreakSeconds: totalBreakSec,
+              ongoingBreakSeconds: ongoingBreakSec,
+              excessBreakMinutes: excessBreakMins,
             };
           }
         }
@@ -123,10 +151,24 @@ export default function AdminAttendanceRegisterPage() {
               ...existing,
               checkOut: "19:00",
               workedHours: worked,
-              classification: worked >= 8 ? "FULL_DAY" : "HALF_DAY",
+              classification: worked >= requiredDailyHours ? "FULL_DAY" : "HALF_DAY",
+              shiftState: shift?.shiftState,
+              breakStartTime: shift?.breakStartTime,
+              breakEndTime: shift?.breakEndTime,
+              totalBreakSeconds: totalBreakSec,
+              ongoingBreakSeconds: 0,
+              excessBreakMinutes: excessBreakMins,
             };
           }
-          return existing;
+          return {
+            ...existing,
+            shiftState: shift?.shiftState,
+            breakStartTime: shift?.breakStartTime,
+            breakEndTime: shift?.breakEndTime,
+            totalBreakSeconds: totalBreakSec,
+            ongoingBreakSeconds: 0,
+            excessBreakMinutes: excessBreakMins,
+          };
         }
 
         // 3. Otherwise Absent on this date
@@ -143,6 +185,10 @@ export default function AdminAttendanceRegisterPage() {
           classification: "ABSENT",
           status: "Absent",
           distanceM: 0,
+          shiftState: "NOT_STARTED",
+          totalBreakSeconds: 0,
+          ongoingBreakSeconds: 0,
+          excessBreakMinutes: 0,
         };
       });
 
@@ -179,15 +225,23 @@ export default function AdminAttendanceRegisterPage() {
     setEditingRecord(null);
   };
 
-  const getStatusBadge = (classification: string, status: string) => {
+  const getStatusBadge = (classification: string, status: string, shiftState?: string) => {
+    if (shiftState === "ON_BREAK" || status === "On Break") {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+          On Break
+        </span>
+      );
+    }
     if (status === "Absent" || classification === "ABSENT") {
       return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fce8e6] text-[#c5221f]">Not Checked In / Absent</span>;
     }
     switch (classification) {
       case "FULL_DAY":
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e6f4ea] text-[#137333]">Full Day (≥10h)</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e6f4ea] text-[#137333]">Full Day (≥{requiredDailyHours}h)</span>;
       case "HALF_DAY":
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fef7e0] text-[#b06000]">Half Day (≥5h)</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fef7e0] text-[#b06000]">Half Day (≥{Math.round(requiredDailyHours / 2)}h)</span>;
       case "PARTIAL_DAY":
         return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Present (Active Shift)</span>;
       default:
@@ -195,7 +249,7 @@ export default function AdminAttendanceRegisterPage() {
     }
   };
 
-  const presentCount = records.filter((r) => r.status === "Present").length;
+  const presentCount = records.filter((r) => r.status === "Present" || r.status === "On Break" as any).length;
   const fullDayCount = records.filter((r) => r.classification === "FULL_DAY").length;
   const halfOrPartialCount = records.filter((r) => r.classification === "HALF_DAY" || r.classification === "PARTIAL_DAY").length;
   const absentCount = records.filter((r) => r.status === "Absent" || r.classification === "ABSENT").length;
@@ -215,10 +269,10 @@ export default function AdminAttendanceRegisterPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Attendance Register</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Daily work-hour tracking with real-time GPS check-in sync, full Admin override, and edit control.
+            Daily work-hour tracking with real-time GPS check-in sync, live break monitoring, and excess break deduction.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -247,6 +301,14 @@ export default function AdminAttendanceRegisterPage() {
               Yesterday
             </button>
           </div>
+
+          <Link
+            href="/admin/settings"
+            title="Configure allowed break duration in Settings"
+            className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold shadow-2xs transition-colors"
+          >
+            <span>Allowed Break: {allowedBreakMinutes}m</span>
+          </Link>
 
           <Link
             href="/admin/attendance/qr"
@@ -316,8 +378,8 @@ export default function AdminAttendanceRegisterPage() {
                 <th className="py-3.5 px-5">Department</th>
                 <th className="py-3.5 px-5">Check In</th>
                 <th className="py-3.5 px-5">Check Out</th>
+                <th className="py-3.5 px-5">Break Details</th>
                 <th className="py-3.5 px-5">Worked Hours</th>
-                <th className="py-3.5 px-5">Overtime</th>
                 <th className="py-3.5 px-5">Status</th>
                 <th className="py-3.5 px-5">Geofence (Distance)</th>
                 <th className="py-3.5 px-5 text-right">Admin Action</th>
@@ -342,6 +404,52 @@ export default function AdminAttendanceRegisterPage() {
                     <td className="py-3.5 px-5 text-slate-600 text-xs">{row.department}</td>
                     <td className="py-3.5 px-5 text-slate-700 font-mono text-xs">{row.checkIn}</td>
                     <td className="py-3.5 px-5 text-slate-700 font-mono text-xs">{row.checkOut || "—"}</td>
+                    <td className="py-3.5 px-5 text-xs">
+                      {row.shiftState === "ON_BREAK" ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-bold text-amber-700 flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                            On Break ({Math.floor((row.ongoingBreakSeconds || 0) / 60)}m)
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Started: {row.breakStartTime || "—"}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            Allowed: {allowedBreakMinutes}m
+                          </span>
+                          {(row.excessBreakMinutes || 0) > 0 && (
+                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">
+                              ⚠️ -{row.excessBreakMinutes}m excess deducted
+                            </span>
+                          )}
+                        </div>
+                      ) : (row.totalBreakSeconds || 0) > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-bold text-slate-700">
+                            {Math.round((row.totalBreakSeconds || 0) / 60)}m total break
+                          </span>
+                          {row.breakStartTime && (
+                            <span className="text-[11px] text-slate-500">
+                              {row.breakStartTime} {row.breakEndTime ? `– ${row.breakEndTime}` : "(Ended)"}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400">
+                            Allowed: {allowedBreakMinutes}m
+                          </span>
+                          {(row.excessBreakMinutes || 0) > 0 ? (
+                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">
+                              ⚠️ -{row.excessBreakMinutes}m excess deducted
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold text-emerald-600">
+                              ✓ Within allowed limit
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs">No break taken</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-5 font-mono text-xs">
                       {row.status === "Present" && (row.checkOut === "—" || !row.checkOut) ? (
                         <div className="flex flex-col">
@@ -350,30 +458,35 @@ export default function AdminAttendanceRegisterPage() {
                           </span>
                           <span className="text-[10px] text-emerald-600 font-semibold mt-0.5 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            {Math.floor(row.workedHours * 60)}m active (Live)
+                            {Math.floor(row.workedHours * 60)}m net active
                           </span>
+                          {(row.excessBreakMinutes || 0) > 0 && (
+                            <span className="text-[9px] text-red-500 font-medium">
+                              (includes -{row.excessBreakMinutes}m break deduction)
+                            </span>
+                          )}
                         </div>
                       ) : row.workedHours > 0 ? (
-                        <span className="font-bold text-slate-800">{row.workedHours} hrs</span>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-800">{row.workedHours} hrs</span>
+                          {(row.excessBreakMinutes || 0) > 0 && (
+                            <span className="text-[9px] text-red-500 font-medium">
+                              (-{row.excessBreakMinutes}m break excess)
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-slate-400">0 hrs</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-5 font-mono text-xs">
-                      {row.overtimeHours > 0 ? (
-                        <span className="text-emerald-600 font-bold">+{row.overtimeHours}h</span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-5">{getStatusBadge(row.classification, row.status)}</td>
+                    <td className="py-3.5 px-5">{getStatusBadge(row.classification, row.status, row.shiftState)}</td>
                     <td className="py-3.5 px-5 text-xs text-slate-600 font-mono">
-                      {row.distanceM > 0 ? `${row.distanceM}m from shop` : row.status === "Present" ? "Verified GPS" : "—"}
+                      {row.distanceM > 0 ? `${row.distanceM}m from shop` : row.status === "Present" || (row.status as any) === "On Break" ? "Verified GPS" : "—"}
                     </td>
                     <td className="py-3.5 px-5 text-right">
                       <button
                         onClick={() => setEditingRecord(row)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                       >
                         <Edit2 size={12} />
                         <span>Edit & Save</span>
@@ -452,8 +565,8 @@ export default function AdminAttendanceRegisterPage() {
                   onChange={(e) => setEditingRecord({ ...editingRecord, classification: e.target.value as any })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
                 >
-                  <option value="FULL_DAY">Full Day (≥10h)</option>
-                  <option value="HALF_DAY">Half Day (≥5h)</option>
+                  <option value="FULL_DAY">Full Day (≥{requiredDailyHours}h)</option>
+                  <option value="HALF_DAY">Half Day (≥{Math.round(requiredDailyHours / 2)}h)</option>
                   <option value="PARTIAL_DAY">In Progress / Partial Day</option>
                   <option value="ABSENT">Absent</option>
                 </select>

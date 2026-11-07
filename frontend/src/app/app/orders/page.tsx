@@ -31,11 +31,13 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import {
   getCRMStore,
+  getDeletedOrderIds,
   claimOrderInStore,
   registerOrderInStore,
   canEmployeeBroadcastOrders,
   updateOrderStatusInStore,
   subscribeToCRMStore,
+  sortOrdersNewestFirst,
   OrderItem,
   EmployeeItem,
 } from "@/lib/store";
@@ -90,25 +92,32 @@ export default function EmployeeOrdersPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const poolOrders = orders.filter((o) => o.status === "Broadcasted");
-  const myOrders = orders.filter((o) => {
-    if (o.status === "Broadcasted" || o.status === "Draft" || o.status === "Cancelled") return false;
-    const nameMatch =
-      (o.claimedBy && (
-        o.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
-        o.claimedBy.toLowerCase().includes(employeeName.toLowerCase()) ||
-        employeeName.toLowerCase().includes(o.claimedBy.toLowerCase())
-      )) ||
-      (o.assignedToName && (
-        o.assignedToName.toLowerCase() === employeeName.toLowerCase() ||
-        o.assignedToName.toLowerCase().includes(employeeName.toLowerCase()) ||
-        employeeName.toLowerCase().includes(o.assignedToName.toLowerCase())
-      )) ||
-      (user?.employee_id && o.assignedToCode === user.employee_id) ||
-      (user?.employee_id && o.claimedBy?.toLowerCase() === user.employee_id.toLowerCase());
-    return Boolean(nameMatch);
-  });
-  const allOrders = orders.filter((o) => o.status !== "Cancelled" && o.status !== "Draft");
+  const deletedSet = getDeletedOrderIds();
+  const poolOrders = sortOrdersNewestFirst(
+    orders.filter((o) => o.status === "Broadcasted" && !o.isDeleted && !deletedSet.has(o.id))
+  );
+  const myOrders = sortOrdersNewestFirst(
+    orders.filter((o) => {
+      if (o.status === "Broadcasted" || o.status === "Draft" || o.status === "Cancelled" || o.isDeleted || deletedSet.has(o.id)) return false;
+      const nameMatch =
+        (o.claimedBy && (
+          o.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
+          o.claimedBy.toLowerCase().includes(employeeName.toLowerCase()) ||
+          employeeName.toLowerCase().includes(o.claimedBy.toLowerCase())
+        )) ||
+        (o.assignedToName && (
+          o.assignedToName.toLowerCase() === employeeName.toLowerCase() ||
+          o.assignedToName.toLowerCase().includes(employeeName.toLowerCase()) ||
+          employeeName.toLowerCase().includes(o.assignedToName.toLowerCase())
+        )) ||
+        (user?.employee_id && o.assignedToCode === user.employee_id) ||
+        (user?.employee_id && o.claimedBy?.toLowerCase() === user.employee_id.toLowerCase());
+      return Boolean(nameMatch);
+    })
+  );
+  const allOrders = sortOrdersNewestFirst(
+    orders.filter((o) => o.status !== "Cancelled" && o.status !== "Draft" && !o.isDeleted && !deletedSet.has(o.id))
+  );
 
   const handleClaim = (order: OrderItem) => {
     claimOrderInStore(order.id, employeeName);
