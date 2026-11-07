@@ -22,9 +22,20 @@ def get_clean_database_url() -> str:
         return "sqlite+aiosqlite:///./test.db"
 
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+psycopg://", 1)
-    if url.startswith("postgresql://") and not url.startswith("postgresql+psycopg://"):
-        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+    # Render internal hostname fix: if host is dpg-xxxx-a without a domain, route via external render domain
+    import re
+    match = re.search(r"@([a-zA-Z0-9\-]+)([:/])", url)
+    if match:
+        host = match.group(1)
+        delimiter = match.group(2)
+        if host.startswith("dpg-") and "." not in host:
+            # Append .oregon-postgres.render.com
+            url = url.replace(f"@{host}{delimiter}", f"@{host}.oregon-postgres.render.com{delimiter}", 1)
+
     return url
 
 

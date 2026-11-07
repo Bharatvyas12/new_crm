@@ -228,10 +228,12 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         const prevRaw = localStorage.getItem(STORAGE_KEY);
         const prevStore = prevRaw ? JSON.parse(prevRaw) : null;
 
-        // Never let an empty employees array erase local employees
-        if (!Array.isArray(payload.data.employees) || payload.data.employees.length === 0) {
-          if (prevStore && Array.isArray(prevStore.employees) && prevStore.employees.length > 0) {
-            payload.data.employees = prevStore.employees;
+        // 1. Preserve local employees: Never allow cloud to wipe existing employees
+        if (prevStore && Array.isArray(prevStore.employees) && prevStore.employees.length > 0) {
+          const serverEmpCodes = new Set((payload.data.employees || []).map((e: any) => e.code));
+          const missingLocalEmps = prevStore.employees.filter((e: any) => e && e.code && !serverEmpCodes.has(e.code));
+          if (missingLocalEmps.length > 0) {
+            payload.data.employees = [...(payload.data.employees || []), ...missingLocalEmps];
           }
         }
 
@@ -257,26 +259,54 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           (o: any) => o && o.id && !localDeletedOrdersSet.has(o.id) && !o.isDeleted
         );
 
-        // Protect genuinely new locally created orders from being erased by race conditions
-        if (prevStore && Array.isArray(prevStore.orders)) {
+        // 2. Preserve ALL local valid orders that are not tombstoned
+        let hasLocalOrdersToSync = false;
+        if (prevStore && Array.isArray(prevStore.orders) && prevStore.orders.length > 0) {
           const serverOrderIds = new Set((payload.data.orders || []).map((o: any) => o.id));
-          const now = Date.now();
-          const unsyncedLocalOrders = prevStore.orders.filter((o: any) => {
-            if (!o || !o.id || serverOrderIds.has(o.id) || o.isDeleted || localDeletedOrdersSet.has(o.id)) {
-              return false;
-            }
-            // Only keep if explicitly pending local sync OR created in the last 15 seconds
-            const createdTs = (o as any)._createdTimestamp || Date.parse(o.created) || 0;
-            return (o as any)._localPendingSync === true || (createdTs > 0 && now - createdTs < 15000);
+          const validLocalOrders = prevStore.orders.filter((o: any) => {
+            return o && o.id && !serverOrderIds.has(o.id) && !o.isDeleted && !localDeletedOrdersSet.has(o.id);
           });
-          if (unsyncedLocalOrders.length > 0) {
-            payload.data.orders = [...unsyncedLocalOrders, ...(payload.data.orders || [])];
-            // Push merged state back to cloud so server catches up immediately
-            setTimeout(() => {
-              const fullStore = { ...prevStore, ...payload.data };
-              pushStoreToCloud(fullStore, { deletedOrderIds: Array.from(localDeletedOrdersSet) });
-            }, 300);
+          if (validLocalOrders.length > 0) {
+            payload.data.orders = [...validLocalOrders, ...(payload.data.orders || [])];
+            hasLocalOrdersToSync = true;
           }
+        }
+
+        // 3. Preserve attendance records
+        if (prevStore && Array.isArray(prevStore.attendance) && prevStore.attendance.length > 0) {
+          const serverAttKeys = new Set((payload.data.attendance || []).map((a: any) => a.id || `${a.employeeCode}_${a.date}`));
+          const validLocalAtt = prevStore.attendance.filter((a: any) => {
+            const key = a.id || `${a.employeeCode}_${a.date}`;
+            return a && !serverAttKeys.has(key);
+          });
+          if (validLocalAtt.length > 0) {
+            payload.data.attendance = [...(payload.data.attendance || []), ...validLocalAtt];
+          }
+        }
+
+        // 4. Preserve active shifts
+        if (prevStore && prevStore.activeShifts && Object.keys(prevStore.activeShifts).length > 0) {
+          payload.data.activeShifts = {
+            ...prevStore.activeShifts,
+            ...(payload.data.activeShifts || {}),
+          };
+        }
+
+        // 5. Preserve tasks
+        if (prevStore && Array.isArray(prevStore.tasks) && prevStore.tasks.length > 0) {
+          const serverTaskIds = new Set((payload.data.tasks || []).map((t: any) => t.id));
+          const validLocalTasks = prevStore.tasks.filter((t: any) => t && t.id && !serverTaskIds.has(t.id));
+          if (validLocalTasks.length > 0) {
+            payload.data.tasks = [...validLocalTasks, ...(payload.data.tasks || [])];
+          }
+        }
+
+        if (hasLocalOrdersToSync) {
+          // Push merged state back to cloud so server catches up immediately
+          setTimeout(() => {
+            const fullStore = { ...prevStore, ...payload.data };
+            pushStoreToCloud(fullStore, { deletedOrderIds: Array.from(localDeletedOrdersSet) });
+          }, 400);
         }
 
         // Save safely merged store to local storage
