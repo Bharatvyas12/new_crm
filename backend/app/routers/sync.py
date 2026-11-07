@@ -142,66 +142,6 @@ def _load_store_from_disk():
 _load_store_from_disk()
 
 
-async def load_store_from_postgres() -> bool:
-    """Loads latest sync store from persistent PostgreSQL table if available."""
-    global _store_cache, _store_version, _store_updated_at, _push_subscriptions
-    try:
-        from app.database import AsyncSessionLocal, CloudSyncStore
-        from sqlalchemy import select
-        async with AsyncSessionLocal() as session:
-            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
-            result = await session.execute(stmt)
-            record = result.scalar_one_or_none()
-            if record and isinstance(record.data, dict) and "employees" in record.data:
-                if isinstance(record.data.get("orders"), list):
-                    record.data["orders"] = _sanitize_orders(record.data["orders"])
-                _store_cache = record.data
-                _store_version = record.version
-                _store_updated_at = record.updated_at
-                subs = record.data.get("_push_subscriptions")
-                if isinstance(subs, dict):
-                    _push_subscriptions.update(subs)
-                print(f"[Sync-Postgres] Successfully loaded store v{_store_version} from database.")
-                return True
-    except Exception as e:
-        # Fallback to in-memory/disk store gracefully
-        print(f"[Sync-Postgres] Postgres read note: {e}")
-        if not _store_cache or not _store_cache.get("employees"):
-            _load_store_from_disk()
-    return False
-
-
-async def save_store_to_postgres() -> bool:
-    """Saves sync store to persistent PostgreSQL table."""
-    global _store_cache, _store_version, _store_updated_at
-    try:
-        from app.database import AsyncSessionLocal, CloudSyncStore
-        from sqlalchemy import select
-        async with AsyncSessionLocal() as session:
-            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
-            result = await session.execute(stmt)
-            record = result.scalar_one_or_none()
-            if not record:
-                record = CloudSyncStore(
-                    id="default",
-                    version=_store_version,
-                    updated_at=_store_updated_at,
-                    data=_store_cache
-                )
-                session.add(record)
-            else:
-                record.version = _store_version
-                record.updated_at = _store_updated_at
-                record.data = _store_cache
-            await session.commit()
-            print(f"[Sync-Postgres] Successfully persisted store v{_store_version} to PostgreSQL database.")
-            return True
-    except Exception as e:
-        print(f"[Sync-Postgres] Postgres write error: {e}")
-    return False
-
-
-
 def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str = "id", deleted_ids: Optional[list] = None) -> list:
     """
     Intelligently merges two lists of dicts by ID without losing data from either device.
@@ -213,18 +153,16 @@ def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str =
         existing_list = []
     if not isinstance(incoming_list, list):
         incoming_list = []
-    del_set = set(str(d) for d in (deleted_ids or []))
 
+    del_set = set(str(d) for d in (deleted_ids or []))
     merged_map = {}
-    
-    # 1. Load existing items
+
     for item in existing_list:
         if isinstance(item, dict):
             item_id = str(item.get(key_field) or item.get("code") or item.get("id") or "")
             if item_id and item_id not in del_set and not item.get("isDeleted"):
                 merged_map[item_id] = item
 
-    # 2. Overlay incoming items
     for item in incoming_list:
         if isinstance(item, dict):
             item_id = str(item.get(key_field) or item.get("code") or item.get("id") or "")
@@ -232,7 +170,6 @@ def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str =
                 if item_id in del_set or item.get("isDeleted"):
                     merged_map.pop(item_id, None)
                 else:
-                    # Preserve high-res receiptPhoto if incoming omitted it
                     if item_id in merged_map and "receiptPhoto" in merged_map[item_id] and not item.get("receiptPhoto"):
                         item["receiptPhoto"] = merged_map[item_id]["receiptPhoto"]
                     merged_map[item_id] = item
@@ -250,6 +187,116 @@ def _merge_item_lists(existing_list: list, incoming_list: list, key_field: str =
             return float(code_num) if code_num else 0.0
         items.sort(key=_get_sort_key, reverse=True)
     return items
+
+
+async def load_store_from_postgres() -> bool:
+    """Loads latest sync store from persistent PostgreSQL table if available, union-merging safely."""
+    global _store_cache, _store_version, _store_updated_at, _push_subscriptions
+    try:
+        from app.database import AsyncSessionLocal, CloudSyncStore
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
+            if record and isinstance(record.data, dict):
+                pg_data = record.data
+                merged_orders = _merge_item_lists(
+                    _store_cache.get("orders", []),
+                    pg_data.get("orders", []),
+                    key_field="id"
+                )
+                merged_employees = _merge_item_lists(
+                    _store_cache.get("employees", []),
+                    pg_data.get("employees", []),
+                    key_field="code"
+                )
+                merged_attendance = _merge_item_lists(
+                    _store_cache.get("attendance", []),
+                    pg_data.get("attendance", []),
+                    key_field="id"
+                )
+                merged_shifts = {
+                    **pg_data.get("activeShifts", {}),
+                    **_store_cache.get("activeShifts", {}),
+                }
+
+                _store_cache = {
+                    **pg_data,
+                    **_store_cache,
+                    "orders": _sanitize_orders(merged_orders),
+                    "employees": merged_employees if merged_employees else _store_cache.get("employees", []),
+                    "attendance": merged_attendance,
+                    "activeShifts": merged_shifts,
+                    "settings": {**(pg_data.get("settings") or {}), **(_store_cache.get("settings") or {})},
+                }
+                _store_version = max(_store_version, record.version or 1)
+                _store_updated_at = record.updated_at or _store_updated_at
+
+                subs = pg_data.get("_push_subscriptions")
+                if isinstance(subs, dict):
+                    _push_subscriptions.update(subs)
+                _save_store_to_disk()
+                print(f"[Sync-Postgres] Successfully loaded and merged store v{_store_version} from database.")
+                return True
+    except Exception as e:
+        print(f"[Sync-Postgres] Postgres read note: {e}")
+        if not _store_cache or not _store_cache.get("employees"):
+            _load_store_from_disk()
+    return False
+
+
+async def save_store_to_postgres() -> bool:
+    """Saves sync store to persistent PostgreSQL table with non-destructive union merge."""
+    global _store_cache, _store_version, _store_updated_at
+    try:
+        from app.database import AsyncSessionLocal, CloudSyncStore
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            stmt = select(CloudSyncStore).where(CloudSyncStore.id == "default")
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
+            if not record:
+                record = CloudSyncStore(
+                    id="default",
+                    version=_store_version,
+                    updated_at=_store_updated_at,
+                    data=_store_cache
+                )
+                session.add(record)
+            else:
+                existing_data = record.data if isinstance(record.data, dict) else {}
+                merged_orders = _merge_item_lists(
+                    existing_data.get("orders", []),
+                    _store_cache.get("orders", []),
+                    key_field="id"
+                )
+                merged_employees = _merge_item_lists(
+                    existing_data.get("employees", []),
+                    _store_cache.get("employees", []),
+                    key_field="code"
+                )
+                merged_attendance = _merge_item_lists(
+                    existing_data.get("attendance", []),
+                    _store_cache.get("attendance", []),
+                    key_field="id"
+                )
+                merged_payload = {
+                    **existing_data,
+                    **_store_cache,
+                    "orders": _sanitize_orders(merged_orders),
+                    "employees": merged_employees,
+                    "attendance": merged_attendance,
+                }
+                record.version = max(record.version or 1, _store_version)
+                record.updated_at = _store_updated_at
+                record.data = merged_payload
+            await session.commit()
+            print(f"[Sync-Postgres] Successfully persisted merged store v{_store_version} to PostgreSQL database.")
+            return True
+    except Exception as e:
+        print(f"[Sync-Postgres] Postgres write error: {e}")
+    return False
 
 
 def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
