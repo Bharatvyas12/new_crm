@@ -1,4 +1,5 @@
 "use client";
+import restoredOrdersData from "./restoredOrders.json";
 
 // Centralized Reactive Client Store with Real-Time Cross-Device Cloud Sync
 import { pushStoreToCloud, initCloudSync } from "./syncEngine";
@@ -591,7 +592,7 @@ export const cleanBaselineStore: CRMStoreData = {
   ],
   advances: [],
   ledger: [],
-  orders: [],
+  orders: (restoredOrdersData || []) as OrderItem[],
   tasks: [],
   attendance: [],
   corrections: [],
@@ -642,29 +643,44 @@ export const getCRMStore = (): CRMStoreData => {
       parsed.deletedOrderIds.forEach((id: string) => deletedSet.add(id));
     }
     const rawOrders = parsed.orders || [];
-    const validOrders = rawOrders.filter(
+    const filteredOrders = rawOrders.filter(
       (o: any) => o && o.id && !deletedSet.has(o.id) && !o.isDeleted
     );
 
-    return {
+    // If local storage has 0 orders but clean baseline has the 138 restored orders, auto-fill them!
+    const effectiveOrders = (filteredOrders.length > 0)
+      ? filteredOrders
+      : (cleanBaselineStore.orders || []);
+
+    const effectiveEmployees = (Array.isArray(parsed.employees) && parsed.employees.length > 1)
+      ? parsed.employees
+      : cleanBaselineStore.employees;
+
+    const result = {
       ...cleanBaselineStore,
       ...parsed,
       activeShifts: parsed.activeShifts || {},
-      orders: validOrders,
-      tasks: parsed.tasks || [],
-      attendance: parsed.attendance || [],
+      orders: effectiveOrders,
+      tasks: (parsed.tasks && parsed.tasks.length > 0) ? parsed.tasks : (cleanBaselineStore.tasks || []),
+      attendance: (parsed.attendance && parsed.attendance.length > 0) ? parsed.attendance : (cleanBaselineStore.attendance || []),
       corrections: parsed.corrections || [],
       complaints: parsed.complaints || [],
       advances: parsed.advances || [],
       leaves: parsed.leaves || [],
       ledger: parsed.ledger || [],
-      employees: (Array.isArray(parsed.employees) && parsed.employees.length > 0)
-        ? parsed.employees
-        : cleanBaselineStore.employees,
+      employees: effectiveEmployees,
       settings: { ...cleanBaselineStore.settings, ...(parsed.settings || {}) },
       roles: parsed.roles || cleanBaselineStore.roles,
       deletedOrderIds: Array.from(deletedSet),
     };
+
+    if (filteredOrders.length === 0 && (cleanBaselineStore.orders || []).length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+      } catch {}
+    }
+
+    return result;
   } catch (err) {
     console.error("Failed to load store:", err);
     return cleanBaselineStore;

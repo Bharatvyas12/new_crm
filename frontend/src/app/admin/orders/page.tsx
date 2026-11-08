@@ -41,6 +41,7 @@ import {
   EmployeeItem,
 } from "@/lib/store";
 import { compressImage } from "@/lib/imageCompressor";
+import { forceSyncNow } from "@/lib/syncEngine";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
@@ -62,6 +63,7 @@ export default function OrdersPage() {
     };
     loadOrdersAndEmployees();
     const unsubscribe = subscribeToCRMStore(loadOrdersAndEmployees);
+    forceSyncNow();
     return () => unsubscribe();
   }, []);
 

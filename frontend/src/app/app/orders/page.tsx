@@ -41,7 +41,7 @@ import {
   OrderItem,
   EmployeeItem,
 } from "@/lib/store";
-import { playLiveSoundNotification } from "@/lib/syncEngine";
+import { playLiveSoundNotification, forceSyncNow } from "@/lib/syncEngine";
 import { compressImage } from "@/lib/imageCompressor";
 
 export default function EmployeeOrdersPage() {
@@ -84,6 +84,7 @@ export default function EmployeeOrdersPage() {
     };
     loadStore();
     const unsubscribe = subscribeToCRMStore(loadStore);
+    forceSyncNow();
     return () => unsubscribe();
   }, [user]);
 

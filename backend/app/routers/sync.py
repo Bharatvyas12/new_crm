@@ -736,9 +736,8 @@ async def get_db_status():
 
 @router.get("/store")
 async def get_cloud_store():
-    """Returns the latest real-time CRM store and version."""
-    loaded = await load_store_from_postgres()
-    if not loaded and (not _store_cache or not _store_cache.get("employees")):
+    """Returns the latest real-time CRM store and version instantly without hanging on suspended DB."""
+    if not _store_cache or not _store_cache.get("employees"):
         _load_store_from_disk()
     return {
         "status": "ok",
