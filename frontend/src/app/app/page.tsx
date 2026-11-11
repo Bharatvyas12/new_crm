@@ -30,6 +30,7 @@ import {
   Smartphone,
   Download,
   AlertTriangle,
+  Calendar,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
@@ -243,7 +244,7 @@ export default function EmployeeHomePage() {
     const store = getCRMStore();
     const shopLat = store.settings?.latitude;
     const shopLng = store.settings?.longitude;
-    const allowedRadius = store.settings?.geofenceRadiusM || 250;
+    const allowedRadius = store.settings?.geofenceRadiusM || 10;
     setSettingsGeofenceRadius(allowedRadius);
 
     if (typeof shopLat !== "number" || typeof shopLng !== "number") {
@@ -281,7 +282,7 @@ export default function EmployeeHomePage() {
         setDistanceMeters(realDistMeters);
 
         // Account for device satellite drift and indoor warehouse accuracy
-        const maxAllowedWithTolerance = allowedRadius + Math.max(acc, 80);
+        const maxAllowedWithTolerance = allowedRadius + Math.min(acc, 5);
         if (realDistMeters <= maxAllowedWithTolerance) {
           setGpsState("VERIFIED");
         } else {
@@ -740,11 +741,35 @@ export default function EmployeeHomePage() {
         </Link>
       </div>
 
-      {/* Financial Advance Request Card */}
-      <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-3xl p-5 space-y-3">
-        <div className="flex items-center justify-between">
+      {/* Leave Application & Salary Advance Quick Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Leave Application Card */}
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-5 space-y-3 flex flex-col justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-xs">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">
+                {lang === "hi" ? "छुट्टी का आवेदन (Leaves)" : "Leave Applications"}
+              </h4>
+              <p className="text-xs text-slate-500">
+                {lang === "hi" ? "आधिकारिक अवकाश या मेडिकल लीव हेतु" : "Apply for planned or medical leave"}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/app/leaves"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors text-center shadow-xs block"
+          >
+            {lang === "hi" ? "छुट्टी के लिए आवेदन करें →" : "Apply Leave →"}
+          </Link>
+        </div>
+
+        {/* Financial Advance Request Card */}
+        <div className="bg-gradient-to-br from-indigo-50 to-slate-50 border border-indigo-100 rounded-3xl p-5 space-y-3 flex flex-col justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
               <DollarSign className="w-5 h-5" />
             </div>
             <div>

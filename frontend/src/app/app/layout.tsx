@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Clock, CheckSquare, Package, Bell } from "lucide-react";
+import { Home, Clock, CheckSquare, Package, Bell, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -18,6 +18,7 @@ const employeeNav = [
   { href: "/app/attendance", labelKey: "attendance", defaultLabel: "Attendance", icon: Clock },
   { href: "/app/tasks", labelKey: "tasks", defaultLabel: "Tasks", icon: CheckSquare, badgeKey: "tasks" },
   { href: "/app/orders", labelKey: "orders", defaultLabel: "Orders", icon: Package, badgeKey: "orders" },
+  { href: "/app/leaves", labelKey: "leaves", defaultLabel: "Leaves", icon: Calendar },
   { href: "/app/complaints", labelKey: "complaints", defaultLabel: "Alerts", icon: Bell },
 ];
 

@@ -306,19 +306,19 @@ export interface CRMStoreData {
 // Clean baseline store data for clean real-time operational use
 export const cleanBaselineStore: CRMStoreData = {
   settings: {
-    shopName: "Vyas Enterprises & Wholesale Hub",
-    ownerName: "Bharat Vyas",
-    phone: "9829012345",
-    email: "contact@vyasenterprises.com",
-    address: "Plot 42, Wholesale Trade Center, Ring Road",
-    latitude: 26.9124,
-    longitude: 75.7873,
-    geofenceRadiusM: 250,
-    shiftStart: "09:00",
-    shiftEnd: "19:00",
-    requiredDailyHours: 10,
+    shopName: "Mahesh Enterprises (Tata Tiscon)",
+    ownerName: "somesh sharma",
+    phone: "9214843291",
+    email: "somesh9497@gmail.com",
+    address: "near tehsil office , kuchaman road , parbatsar 341512",
+    latitude: 26.893062,
+    longitude: 74.76912,
+    geofenceRadiusM: 10,
+    shiftStart: "08:00",
+    shiftEnd: "20:00",
+    requiredDailyHours: 12,
     allowedBreakMinutes: 60,
-    gracePeriodMinutes: 15,
+    gracePeriodMinutes: 20,
     qrRotationSeconds: 45,
     lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
   },
@@ -670,7 +670,21 @@ export const getCRMStore = (): CRMStoreData => {
       leaves: parsed.leaves || [],
       ledger: parsed.ledger || [],
       employees: effectiveEmployees,
-      settings: { ...cleanBaselineStore.settings, ...(parsed.settings || {}) },
+      settings: (() => {
+        const rawSettings = { ...cleanBaselineStore.settings, ...(parsed.settings || {}) };
+        if (rawSettings.latitude === 26.9124 || !rawSettings.latitude) {
+          rawSettings.latitude = 26.893062;
+          rawSettings.longitude = 74.76912;
+          rawSettings.address = "near tehsil office , kuchaman road , parbatsar 341512";
+          rawSettings.shopName = "Mahesh Enterprises (Tata Tiscon)";
+          rawSettings.ownerName = "somesh sharma";
+          rawSettings.phone = "9214843291";
+        }
+        if (rawSettings.geofenceRadiusM === 250 || !rawSettings.geofenceRadiusM) {
+          rawSettings.geofenceRadiusM = 10;
+        }
+        return rawSettings;
+      })(),
       roles: parsed.roles || cleanBaselineStore.roles,
       deletedOrderIds: Array.from(deletedSet),
     };
@@ -1409,7 +1423,7 @@ export const checkInEmployeeInStore = (data: {
   verifiedViaQR?: boolean;
 }) => {
   const store = getCRMStore();
-  const allowedRadius = store.settings?.geofenceRadiusM || 250;
+  const allowedRadius = store.settings?.geofenceRadiusM || 10;
   if (!data.verifiedViaQR && typeof data.distanceM === "number" && data.distanceM > allowedRadius) {
     throw new Error(`Location outside geofence: ${data.distanceM}m exceeds allowed shop limit of ${allowedRadius}m.`);
   }
@@ -1648,4 +1662,82 @@ export const updateAttendanceRecordInStore = (record: AttendanceRecord) => {
   }
   saveCRMStore(store);
   return true;
+};
+
+
+export const autoCheckOutAllActiveEmployeesInStore = (options?: { checkOutTime?: string }) => {
+  const store = getCRMStore();
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const defaultCheckOutTime =
+    options?.checkOutTime ||
+    store.settings?.shiftEnd ||
+    now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  if (!store.activeShifts) store.activeShifts = {};
+  if (!store.attendance) store.attendance = [];
+
+  let count = 0;
+  const requiredHours = Number(store.settings?.requiredDailyHours) || 12;
+
+  // 1. Process all today's attendance records that are still open
+  store.attendance = store.attendance.map((rec) => {
+    // Only target today's Present records
+    if (rec.date === todayStr && rec.status === "Present") {
+      const hasCheckedOut = rec.checkOut && rec.checkOut !== "—" && rec.checkOut.trim() !== "";
+      // CRITICAL: If employee ALREADY checked out manually, keep their exact time untouched!
+      if (hasCheckedOut) {
+        return rec;
+      }
+
+      // If they forgot to check out, auto-close it with the shift end / day-off timestamp
+      count++;
+      const checkInStr = rec.checkIn || store.settings?.shiftStart || "08:00";
+
+      let worked = requiredHours;
+      try {
+        const [ciH, ciM] = checkInStr.replace(/[^0-9:]/g, "").split(":").map(Number);
+        const [coH, coM] = defaultCheckOutTime.replace(/[^0-9:]/g, "").split(":").map(Number);
+        if (!isNaN(ciH) && !isNaN(coH)) {
+          const diffMins = (coH * 60 + (coM || 0)) - (ciH * 60 + (ciM || 0));
+          worked = Math.max(0, Number((diffMins / 60).toFixed(1)));
+        }
+      } catch {
+        worked = requiredHours;
+      }
+
+      const classification: AttendanceRecord["classification"] =
+        worked >= requiredHours ? "FULL_DAY" : worked >= requiredHours / 2 ? "HALF_DAY" : "PARTIAL_DAY";
+
+      return {
+        ...rec,
+        checkOut: defaultCheckOutTime,
+        workedHours: worked,
+        classification,
+        status: "Present" as const,
+      };
+    }
+    return rec;
+  });
+
+  // 2. Also close any activeShifts for today that are still ACTIVE or ON_BREAK
+  Object.keys(store.activeShifts).forEach((empCode) => {
+    const shift = store.activeShifts[empCode];
+    if (shift && shift.date === todayStr && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) {
+      shift.shiftState = "COMPLETED";
+      shift.checkOutTime = defaultCheckOutTime;
+      shift.checkOutTimestamp = Date.now();
+      if (shift.breakStartedAt) {
+        shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
+        shift.breakStartedAt = undefined;
+      }
+    }
+  });
+
+  saveCRMStore(store);
+  return {
+    success: true,
+    checkedOutCount: count,
+    checkOutTime: defaultCheckOutTime,
+  };
 };

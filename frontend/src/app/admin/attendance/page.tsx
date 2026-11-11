@@ -5,6 +5,8 @@ import Link from "next/link";
 import {
   Clock,
   CheckCircle2,
+  Power,
+  Store,
   AlertCircle,
   XCircle,
   Calendar,
@@ -21,6 +23,7 @@ import {
   getCRMStore,
   subscribeToCRMStore,
   updateAttendanceRecordInStore,
+  autoCheckOutAllActiveEmployeesInStore,
   getDynamicWorkedHours,
   AttendanceRecord,
 } from "@/lib/store";
@@ -216,6 +219,22 @@ export default function AdminAttendanceRegisterPage() {
     return a.classification === filter || a.status === filter;
   });
 
+    const handleDayOffAutoCheckout = () => {
+    const isToday = selectedDate === new Date().toISOString().split("T")[0];
+    const confirmMsg = isToday
+      ? "क्या आप आज 'Day Off / दुकान बंद' घोषित करना चाहते हैं?\n\n• जिन कर्मचारियों ने आज चेक-आउट नहीं किया था, उनका अभी ऑटो चेक-आउट हो जाएगा।\n• जिन्होंने पहले ही चेक-आउट कर लिया है, उनका दर्ज समय सुरक्षित रहेगा।"
+      : "आज की तारीख के सभी खुले चेक-इन को बंद करें?";
+
+    if (window.confirm(confirmMsg)) {
+      const res = autoCheckOutAllActiveEmployeesInStore();
+      if (res.checkedOutCount > 0) {
+        showToast(`✓ Day Off: ${res.checkedOutCount} कर्मचारियों का ऑटो चेक-आउट (${res.checkOutTime}) दर्ज हुआ।`);
+      } else {
+        showToast(`✓ सभी कर्मचारी पहले से चेक-आउट हैं या कोई खुला चेक-इन नहीं था।`);
+      }
+    }
+  };
+
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRecord) return;
@@ -309,6 +328,16 @@ export default function AdminAttendanceRegisterPage() {
           >
             <span>Allowed Break: {allowedBreakMinutes}m</span>
           </Link>
+
+          <button
+            type="button"
+            onClick={handleDayOffAutoCheckout}
+            title="दुकान बंद होने पर सभी छूटे हुए कर्मचारियों का ऑटो चेक-आउट करें"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer"
+          >
+            <Power size={14} />
+            <span>Day Off / दुकान बंद (Auto Checkout)</span>
+          </button>
 
           <Link
             href="/admin/attendance/qr"
