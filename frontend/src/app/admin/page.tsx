@@ -13,6 +13,9 @@ import {
   Bell,
   Download,
   CheckCircle2,
+  Power,
+  Calendar,
+  Store,
   AlertCircle,
   Clock,
   XCircle,
@@ -34,6 +37,7 @@ import {
   updateLeaveStatusInStore,
   reviewTaskInStore,
   updateCorrectionStatusInStore,
+  autoCheckOutAllActiveEmployeesInStore,
   CRMStoreData,
 } from "@/lib/store";
 import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
@@ -42,6 +46,28 @@ export default function AdminDashboardPage() {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [installBanner, setInstallBanner] = useState(true);
   const [storeData, setStoreData] = useState<CRMStoreData | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleDayOffAutoCheckout = () => {
+    const confirmMsg =
+      "क्या आप आज 'Day Off / दुकान बंद' घोषित करना चाहते हैं?\n\n• जो कर्मचारी चेक-आउट करना भूल गए थे उनका चेक-आउट शिफ्ट समाप्ति (8:00 PM) पर दर्ज होगा (कोई एक्स्ट्रा ओवरटाइम नहीं जुड़ेगा)।\n• जिन्होंने पहले से चेक-आउट कर लिया था, उनका समय नहीं बदलेगा।";
+
+    if (window.confirm(confirmMsg)) {
+      const res = autoCheckOutAllActiveEmployeesInStore();
+      refreshState();
+      if (res.checkedOutCount > 0) {
+        showToast(`✓ Day Off: ${res.checkedOutCount} कर्मचारियों का ऑटो चेक-आउट (${res.checkOutTime}) दर्ज हुआ।`);
+      } else {
+        showToast("✓ सभी कर्मचारी पहले से चेक-आउट हैं या कोई खुला चेक-इन नहीं था।");
+      }
+    }
+  };
+
 
   const refreshState = () => {
     const store = getCRMStore();
@@ -182,6 +208,264 @@ export default function AdminDashboardPage() {
 
       {/* Admin Phone Notifications & Audio Controls */}
       <PhoneNotificationBanner userCode="ADMIN" isEmployee={false} />
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-top-3 border border-slate-700">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* TOP SECTION: ADMIN MODULES & HIGHLIGHTED SHORTCUTS (Mobile-First, Big Fonts, Vibrant Cards) */}
+      <div className="space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <span>🚀 मुख्य कार्य व मॉड्यूल्स (Admin Shortcuts)</span>
+            </h2>
+            <p className="text-xs text-slate-500 font-medium">
+              मोबाइल पर आसान उपयोग के लिए बड़े बटन्स और त्वरित एक्सेस
+            </p>
+          </div>
+          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+            1-Tap Actions
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          {/* 1. Orders */}
+          <Link
+            href="/admin/orders"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 text-white shadow-md shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <Package className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                {openOrders.length} Pool
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                ऑर्डर्स (Orders)
+              </h3>
+              <p className="text-[11px] text-blue-100 font-medium truncate">
+                {orders.length} कुल • पर्ची व प्रसारण
+              </p>
+            </div>
+          </Link>
+
+          {/* 2. Attendance */}
+          <Link
+            href="/admin/attendance"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-800 text-white shadow-md shadow-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <Clock className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                {presentCount} Live
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                हाज़िरी (Attendance)
+              </h3>
+              <p className="text-[11px] text-emerald-100 font-medium truncate">
+                {presentCount} उपस्थित • 10m Geofence
+              </p>
+            </div>
+          </Link>
+
+          {/* 3. Day Off / Auto Checkout (Direct 1-Tap Action!) */}
+          <button
+            type="button"
+            onClick={handleDayOffAutoCheckout}
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-red-600 via-rose-700 to-red-900 text-white shadow-lg shadow-red-500/30 ring-2 ring-red-400/70 hover:shadow-xl hover:shadow-red-500/40 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px] text-left cursor-pointer"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:rotate-12 transition-transform">
+                <Power className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white text-red-700 tracking-wider animate-pulse shadow-xs">
+                1-Tap Close
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                Day Off (दुकान बंद)
+              </h3>
+              <p className="text-[11px] text-red-100 font-medium truncate">
+                सभी का ऑटो चेक-आउट (0 Overtime)
+              </p>
+            </div>
+          </button>
+
+          {/* 4. Shop QR */}
+          <Link
+            href="/admin/attendance/qr"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-purple-600 via-violet-700 to-purple-900 text-white shadow-md shadow-purple-500/20 hover:shadow-xl hover:shadow-purple-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <QrCode className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                Counter
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                दुकान QR (Shop QR)
+              </h3>
+              <p className="text-[11px] text-purple-100 font-medium truncate">
+                काउंटर सत्यापन कोड
+              </p>
+            </div>
+          </Link>
+
+          {/* 5. Employees */}
+          <Link
+            href="/admin/employees"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-amber-600 via-orange-600 to-amber-800 text-white shadow-md shadow-amber-500/20 hover:shadow-xl hover:shadow-amber-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <Users className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                {employees.length} Staff
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                कर्मचारी (Staff)
+              </h3>
+              <p className="text-[11px] text-amber-100 font-medium truncate">
+                14 कर्मचारी • प्रोफाइल व सैलरी
+              </p>
+            </div>
+          </Link>
+
+          {/* 6. Leaves */}
+          <Link
+            href="/admin/leaves"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-rose-600 via-pink-700 to-rose-900 text-white shadow-md shadow-rose-500/20 hover:shadow-xl hover:shadow-rose-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                {pendingLeaves.length} New
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                छुट्टियां (Leaves)
+              </h3>
+              <p className="text-[11px] text-rose-100 font-medium truncate">
+                {pendingLeaves.length} लंबित आवेदन • अनुमोदन
+              </p>
+            </div>
+          </Link>
+
+          {/* 7. Tasks */}
+          <Link
+            href="/admin/tasks/review"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-cyan-600 via-teal-700 to-cyan-900 text-white shadow-md shadow-cyan-500/20 hover:shadow-xl hover:shadow-cyan-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                {tasksForReview.length} Review
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                टास्क (Tasks)
+              </h3>
+              <p className="text-[11px] text-cyan-100 font-medium truncate">
+                {tasksForReview.length} सबूत सत्यापन हेतु
+              </p>
+            </div>
+          </Link>
+
+          {/* 8. Payroll */}
+          <Link
+            href="/admin/payroll"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-teal-600 via-emerald-700 to-teal-900 text-white shadow-md shadow-teal-500/20 hover:shadow-xl hover:shadow-teal-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <CircleDollarSign className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                Salary
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                वेतन (Payroll)
+              </h3>
+              <p className="text-[11px] text-teal-100 font-medium truncate">
+                सैलरी गणना व अग्रिम हिसाब
+              </p>
+            </div>
+          </Link>
+
+          {/* 9. Reports */}
+          <Link
+            href="/admin/reports"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-indigo-600 via-purple-700 to-indigo-900 text-white shadow-md shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+                <FileBarChart className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                Reports
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                रिपोर्ट्स (Reports)
+              </h3>
+              <p className="text-[11px] text-indigo-100 font-medium truncate">
+                एक्सेल व PDF डाउनलोड
+              </p>
+            </div>
+          </Link>
+
+          {/* 10. Settings */}
+          <Link
+            href="/admin/settings"
+            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-slate-700 via-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+          >
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:rotate-45 transition-transform">
+                <Settings className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                10m Lock
+              </span>
+            </div>
+            <div className="space-y-0.5 pt-2">
+              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
+                सेटिंग्स (Settings)
+              </h3>
+              <p className="text-[11px] text-slate-300 font-medium truncate">
+                पर्बतसर GPS व शिफ्ट नियम
+              </p>
+            </div>
+          </Link>
+        </div>
+      </div>
 
       {/* Workforce Live Attendance Bar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -379,91 +663,39 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Shortcuts & Live Activity Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Shortcuts */}
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
-          <h3 className="text-base font-bold text-slate-900">Admin Modules & Shortcuts</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Link
-              href="/admin/attendance"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Attendance
-            </Link>
-            <Link
-              href="/admin/employees"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Employees
-            </Link>
-            <Link
-              href="/admin/attendance/qr"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Shop QR
-            </Link>
-            <Link
-              href="/admin/orders"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Orders
-            </Link>
-            <Link
-              href="/admin/tasks"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Tasks
-            </Link>
-            <Link
-              href="/admin/payroll"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Payroll
-            </Link>
-            <Link
-              href="/admin/reports"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Reports
-            </Link>
-            <Link
-              href="/admin/settings"
-              className="flex items-center justify-start px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-blue-400 hover:bg-slate-50/70 hover:text-blue-700 transition-all shadow-2xs"
-            >
-              Settings
-            </Link>
+      {/* Full Width Live Activity Feed */}
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Live Activity Feed (ताज़ा गतिविधियाँ)</h3>
+            <p className="text-xs text-slate-400 mt-0.5">ऑर्डर्स, टास्क व लेजर के रीयल-टाइम अपडेट्स</p>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span>Live Sync Active</span>
           </div>
         </div>
 
-        {/* Right: Live Activity Feed */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900">Live Activity Feed</h3>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-          </div>
-
-          <div className="space-y-3">
-            {recentActivities.length > 0 ? (
-              recentActivities.map((act, i) => (
-                <div key={i} className="flex items-start gap-3 text-xs">
-                  <div className={`w-7 h-7 rounded-lg ${act.color} flex items-center justify-center shrink-0 mt-0.5`}>
-                    <act.icon size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 truncate">{act.title}</p>
-                    <p className="text-slate-500 truncate">{act.desc}</p>
-                  </div>
-                  <span className="text-slate-400 font-mono text-[10px] shrink-0">{act.time}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {recentActivities.length > 0 ? (
+            recentActivities.map((act, i) => (
+              <div key={i} className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/70 hover:bg-slate-100/70 transition-colors">
+                <div className={`w-8 h-8 rounded-xl ${act.color} flex items-center justify-center shrink-0 mt-0.5 shadow-2xs`}>
+                  <act.icon size={16} />
                 </div>
-              ))
-            ) : (
-              <div className="p-6 text-center text-slate-400 text-xs">
-                <Inbox size={24} className="mx-auto mb-2 text-slate-300" />
-                No recent activity. Actions taken on any device will appear here instantly.
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-900 text-xs truncate">{act.title}</p>
+                  <p className="text-slate-500 text-[11px] truncate mt-0.5">{act.desc}</p>
+                  <span className="text-slate-400 font-mono text-[10px] block mt-1">{act.time}</span>
+                </div>
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="col-span-full py-8 text-center text-slate-400 text-xs">
+              <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
+              कोई नई गतिविधि नहीं। जैसे ही कोई कर्मचारी ऑर्डर या टास्क सबमिट करेगा, यहाँ तुरंत दिखाई देगा।
+            </div>
+          )}
         </div>
       </div>
 

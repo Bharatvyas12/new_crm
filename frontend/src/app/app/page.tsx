@@ -145,7 +145,8 @@ export default function EmployeeHomePage() {
     }
 
     // Sync persistent shift state
-    const shift = getActiveShift(employeeCode);
+    const effectiveCode = foundEmp?.code || employeeCode;
+    const shift = getActiveShift(effectiveCode, employeeName);
     if (shift) {
       setShiftState(shift.shiftState);
       setCheckInTime(shift.checkInTime || "—");
@@ -201,7 +202,8 @@ export default function EmployeeHomePage() {
     let interval: any = null;
     if (shiftState === "ACTIVE" || shiftState === "ON_BREAK") {
       interval = setInterval(() => {
-        const shift = getActiveShift(employeeCode);
+        const effectiveCode = currentEmployeeProfile?.code || employeeCode;
+        const shift = getActiveShift(effectiveCode, employeeName);
         if (shift) {
           const store = getCRMStore();
           const allowedBreakSec = ((store.settings?.allowedBreakMinutes != null ? store.settings.allowedBreakMinutes : 60)) * 60;
@@ -334,19 +336,28 @@ export default function EmployeeHomePage() {
   };
 
   const handleStartBreak = () => {
-    startBreakInStore(employeeCode);
-    setShiftState("ON_BREAK");
-    showToast("Break started. Break timer ticking.");
+    const effectiveCode = currentEmployeeProfile?.code || employeeCode;
+    const success = startBreakInStore(effectiveCode, employeeName);
+    if (success) {
+      setShiftState("ON_BREAK");
+      showToast(lang === "hi" ? "ब्रेक शुरू हुआ। ब्रेक टाइमर चालू है।" : "Break started. Break timer ticking.");
+    } else {
+      showToast(lang === "hi" ? "ब्रेक शुरू नहीं हो सका। कृपया पहले चेक-इन करें।" : "Could not start break. Please check in first.");
+    }
   };
 
   const handleEndBreak = () => {
-    endBreakInStore(employeeCode);
-    setShiftState("ACTIVE");
-    showToast("Break ended. Resuming active work shift.");
+    const effectiveCode = currentEmployeeProfile?.code || employeeCode;
+    const success = endBreakInStore(effectiveCode, employeeName);
+    if (success) {
+      setShiftState("ACTIVE");
+      showToast(lang === "hi" ? "ब्रेक समाप्त हुआ। कार्य पुनः शुरू हुआ।" : "Break ended. Resuming active work shift.");
+    }
   };
 
   const handleCheckOut = () => {
-    const shift = checkOutEmployeeInStore(employeeCode);
+    const effectiveCode = currentEmployeeProfile?.code || employeeCode;
+    const shift = checkOutEmployeeInStore(effectiveCode, employeeName);
     if (shift) {
       setShiftState("COMPLETED");
       if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);

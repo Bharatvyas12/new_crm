@@ -1549,43 +1549,164 @@ export const getDynamicWorkedHours = (
   };
 };
 
-export const startBreakInStore = (employeeCode: string) => {
+export const findActiveShiftInStore = (
+  store: CRMStoreData,
+  employeeCode: string,
+  employeeName?: string
+): ActiveShiftState | null => {
+  if (!store.activeShifts) store.activeShifts = {};
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+
+  const cleanCode = (employeeCode || "").trim().toLowerCase();
+  const cleanName = (employeeName || "").trim().toLowerCase();
+
+  // 1. Direct exact key match
+  if (employeeCode && store.activeShifts[employeeCode]) {
+    const s = store.activeShifts[employeeCode];
+    if (s.date === today) return s;
+  }
+
+  // 2. Case-insensitive key match
+  for (const key of Object.keys(store.activeShifts)) {
+    if (cleanCode && key.toLowerCase() === cleanCode) {
+      const s = store.activeShifts[key];
+      if (s.date === today) return s;
+    }
+  }
+
+  // 3. Match employeeCode or employeeName property inside shift object
+  for (const s of Object.values(store.activeShifts)) {
+    if (s.date === today) {
+      if (cleanCode && s.employeeCode && s.employeeCode.toLowerCase() === cleanCode) return s;
+      if (cleanName && s.employeeName && s.employeeName.toLowerCase() === cleanName) return s;
+    }
+  }
+
+  // 4. Match via store.employees
+  const emp = (store.employees || []).find(
+    (e) =>
+      (cleanCode && (e.code.toLowerCase() === cleanCode || e.id.toLowerCase() === cleanCode)) ||
+      (cleanName && e.name.toLowerCase() === cleanName)
+  );
+  if (emp) {
+    if (store.activeShifts[emp.code] && store.activeShifts[emp.code].date === today) {
+      return store.activeShifts[emp.code];
+    }
+    if (store.activeShifts[emp.id] && store.activeShifts[emp.id].date === today) {
+      return store.activeShifts[emp.id];
+    }
+  }
+
+  return null;
+};
+
+export const getActiveShift = (employeeCode: string, employeeName?: string): ActiveShiftState | null => {
+  const store = getCRMStore();
+  const shift = findActiveShiftInStore(store, employeeCode, employeeName);
+  if (shift) return shift;
+
+  // Fallback auto-hydration: If employee is marked Present today in attendance without checkout, hydrate shift!
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const cleanCode = (employeeCode || "").trim().toLowerCase();
+  const cleanName = (employeeName || "").trim().toLowerCase();
+
+  const att = (store.attendance || []).find(
+    (a) =>
+      a.date === today &&
+      a.status === "Present" &&
+      (!a.checkOut || a.checkOut === "—" || a.checkOut.trim() === "") &&
+      ((cleanCode && a.employeeCode.toLowerCase() === cleanCode) ||
+        (cleanName && a.employeeName.toLowerCase() === cleanName))
+  );
+
+  if (att) {
+    const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const hydratedShift: ActiveShiftState = {
+      employeeCode: att.employeeCode || employeeCode,
+      employeeName: att.employeeName || employeeName || "Employee",
+      department: att.department || "Operations",
+      shiftState: "ACTIVE",
+      checkInTime: att.checkIn || nowTime,
+      checkInTimestamp: Date.now() - 3600000,
+      totalBreakSeconds: 0,
+      date: today,
+      distanceM: att.distanceM || 5,
+    };
+    if (!store.activeShifts) store.activeShifts = {};
+    store.activeShifts[hydratedShift.employeeCode] = hydratedShift;
+    if (employeeCode && employeeCode !== hydratedShift.employeeCode) {
+      store.activeShifts[employeeCode] = hydratedShift;
+    }
+    saveCRMStore(store);
+    return hydratedShift;
+  }
+
+  return null;
+};
+
+export const startBreakInStore = (employeeCode: string, employeeName?: string) => {
   const store = getCRMStore();
   if (!store.activeShifts) store.activeShifts = {};
-  if (store.activeShifts[employeeCode]) {
+  let shift = findActiveShiftInStore(store, employeeCode, employeeName);
+  if (!shift) {
+    shift = getActiveShift(employeeCode, employeeName);
+  }
+
+  if (shift) {
     const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    store.activeShifts[employeeCode].shiftState = "ON_BREAK";
-    store.activeShifts[employeeCode].breakStartedAt = Date.now();
-    store.activeShifts[employeeCode].breakStartTime = nowTime;
+    shift.shiftState = "ON_BREAK";
+    shift.breakStartedAt = Date.now();
+    shift.breakStartTime = nowTime;
+
+    store.activeShifts[shift.employeeCode] = shift;
+    if (employeeCode && employeeCode !== shift.employeeCode) {
+      store.activeShifts[employeeCode] = shift;
+    }
+
     saveCRMStore(store);
     return true;
   }
   return false;
 };
 
-export const endBreakInStore = (employeeCode: string) => {
+export const endBreakInStore = (employeeCode: string, employeeName?: string) => {
   const store = getCRMStore();
   if (!store.activeShifts) store.activeShifts = {};
-  if (store.activeShifts[employeeCode]) {
-    const shift = store.activeShifts[employeeCode];
+  let shift = findActiveShiftInStore(store, employeeCode, employeeName);
+  if (!shift) {
+    shift = getActiveShift(employeeCode, employeeName);
+  }
+
+  if (shift) {
     const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     if (shift.breakStartedAt) {
-      shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
+      const elapsed = Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
+      shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + elapsed;
       shift.breakStartedAt = undefined;
     }
     shift.breakEndTime = nowTime;
     shift.shiftState = "ACTIVE";
+
+    store.activeShifts[shift.employeeCode] = shift;
+    if (employeeCode && employeeCode !== shift.employeeCode) {
+      store.activeShifts[employeeCode] = shift;
+    }
+
     saveCRMStore(store);
     return true;
   }
   return false;
 };
 
-export const checkOutEmployeeInStore = (employeeCode: string) => {
+export const checkOutEmployeeInStore = (employeeCode: string, employeeName?: string) => {
   const store = getCRMStore();
   if (!store.activeShifts) store.activeShifts = {};
-  if (store.activeShifts[employeeCode]) {
-    const shift = store.activeShifts[employeeCode];
+  let shift = findActiveShiftInStore(store, employeeCode, employeeName);
+  if (!shift) {
+    shift = getActiveShift(employeeCode, employeeName);
+  }
+
+  if (shift) {
     const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     shift.shiftState = "COMPLETED";
     shift.checkOutTime = nowTime;
@@ -1603,43 +1724,36 @@ export const checkOutEmployeeInStore = (employeeCode: string) => {
     const grossElapsedSec = Math.max(0, Math.floor(((shift.checkOutTimestamp || Date.now()) - shift.checkInTimestamp) / 1000));
     const netWorkedSec = Math.max(0, grossElapsedSec - excessBreakSec);
     const totalHours = Number((netWorkedSec / 3600).toFixed(1));
-    const requiredHours = Number(store.settings?.requiredDailyHours) || 10;
+    const requiredHours = Number(store.settings?.requiredDailyHours) || 12;
     const classification: AttendanceRecord["classification"] =
       totalHours >= requiredHours ? "FULL_DAY" : totalHours >= requiredHours / 2 ? "HALF_DAY" : "PARTIAL_DAY";
-    const overtimeHours = 0; // Overtime removed per client salary policy
+    const overtimeHours = 0; // Overtime strictly 0 per policy
 
     // Update in store.attendance
     const today = shift.date;
     const existingIndex = store.attendance.findIndex(
-      (a) => a.employeeCode === employeeCode && a.date === today
+      (a) => (a.employeeCode === shift.employeeCode || a.employeeCode === employeeCode) && a.date === today
     );
     if (existingIndex >= 0) {
       store.attendance[existingIndex] = {
         ...store.attendance[existingIndex],
         checkOut: nowTime,
         workedHours: totalHours,
-        overtimeHours,
+        overtimeHours: 0,
         classification,
         status: "Present",
       };
+    }
+
+    store.activeShifts[shift.employeeCode] = shift;
+    if (employeeCode && employeeCode !== shift.employeeCode) {
+      store.activeShifts[employeeCode] = shift;
     }
 
     saveCRMStore(store);
     return shift;
   }
   return null;
-};
-
-export const getActiveShift = (employeeCode: string): ActiveShiftState | null => {
-  const store = getCRMStore();
-  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-  const shift = store.activeShifts?.[employeeCode];
-  if (!shift) return null;
-  // If the shift is from a previous day, start a fresh new shift for today!
-  if (shift.date !== today) {
-    return null;
-  }
-  return shift;
 };
 
 export const resetShiftForEmployeeInStore = (employeeCode: string) => {
@@ -1664,43 +1778,66 @@ export const updateAttendanceRecordInStore = (record: AttendanceRecord) => {
   return true;
 };
 
-
 export const autoCheckOutAllActiveEmployeesInStore = (options?: { checkOutTime?: string }) => {
   const store = getCRMStore();
   const now = new Date();
   const todayStr = now.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-  const defaultCheckOutTime =
-    options?.checkOutTime ||
-    store.settings?.shiftEnd ||
-    now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const shiftEndTime = store.settings?.shiftEnd || "20:00"; // default 8:00 PM (20:00)
+  const shiftStartTime = store.settings?.shiftStart || "08:00"; // default 8:00 AM (08:00)
+  const requiredHours = Number(store.settings?.requiredDailyHours) || 12;
+
+  // Capped checkout time logic:
+  // If admin closes at 9:00 PM (or 10 PM) and shift ends at 8:00 PM,
+  // the auto-checkout timestamp is capped at shiftEndTime ("20:00") so NO extra 1 hour overtime is counted!
+  const currentFormattedTime = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  let targetCheckOutTime = shiftEndTime;
+
+  if (options?.checkOutTime) {
+    targetCheckOutTime = options.checkOutTime;
+  } else {
+    try {
+      const [nowH, nowM] = currentFormattedTime.replace(/[^0-9:]/g, "").split(":").map(Number);
+      const [seH, seM] = shiftEndTime.replace(/[^0-9:]/g, "").split(":").map(Number);
+      const nowTotalMins = (nowH || 0) * 60 + (nowM || 0);
+      const seTotalMins = (seH || 0) * 60 + (seM || 0);
+
+      // If closing earlier than shift end (e.g. 6:30 PM), use early close time
+      // If closing at or after shift end (e.g. 9:00 PM), CAP strictly at shiftEnd!
+      if (nowTotalMins < seTotalMins) {
+        targetCheckOutTime = currentFormattedTime;
+      } else {
+        targetCheckOutTime = shiftEndTime;
+      }
+    } catch {
+      targetCheckOutTime = shiftEndTime;
+    }
+  }
 
   if (!store.activeShifts) store.activeShifts = {};
   if (!store.attendance) store.attendance = [];
 
   let count = 0;
-  const requiredHours = Number(store.settings?.requiredDailyHours) || 12;
 
-  // 1. Process all today's attendance records that are still open
+  // 1. Process attendance records
   store.attendance = store.attendance.map((rec) => {
-    // Only target today's Present records
     if (rec.date === todayStr && rec.status === "Present") {
       const hasCheckedOut = rec.checkOut && rec.checkOut !== "—" && rec.checkOut.trim() !== "";
-      // CRITICAL: If employee ALREADY checked out manually, keep their exact time untouched!
+      // CRITICAL: Preserve existing manual checkout untouched!
       if (hasCheckedOut) {
         return rec;
       }
 
-      // If they forgot to check out, auto-close it with the shift end / day-off timestamp
       count++;
-      const checkInStr = rec.checkIn || store.settings?.shiftStart || "08:00";
+      const checkInStr = rec.checkIn || shiftStartTime;
 
+      // Calculate worked hours, strictly CAPPED at requiredHours (0 overtime)
       let worked = requiredHours;
       try {
         const [ciH, ciM] = checkInStr.replace(/[^0-9:]/g, "").split(":").map(Number);
-        const [coH, coM] = defaultCheckOutTime.replace(/[^0-9:]/g, "").split(":").map(Number);
+        const [coH, coM] = targetCheckOutTime.replace(/[^0-9:]/g, "").split(":").map(Number);
         if (!isNaN(ciH) && !isNaN(coH)) {
           const diffMins = (coH * 60 + (coM || 0)) - (ciH * 60 + (ciM || 0));
-          worked = Math.max(0, Number((diffMins / 60).toFixed(1)));
+          worked = Math.max(0, Math.min(requiredHours, Number((diffMins / 60).toFixed(1))));
         }
       } catch {
         worked = requiredHours;
@@ -1711,8 +1848,9 @@ export const autoCheckOutAllActiveEmployeesInStore = (options?: { checkOutTime?:
 
       return {
         ...rec,
-        checkOut: defaultCheckOutTime,
+        checkOut: targetCheckOutTime,
         workedHours: worked,
+        overtimeHours: 0, // STRICTLY ZERO OVERTIME
         classification,
         status: "Present" as const,
       };
@@ -1720,12 +1858,12 @@ export const autoCheckOutAllActiveEmployeesInStore = (options?: { checkOutTime?:
     return rec;
   });
 
-  // 2. Also close any activeShifts for today that are still ACTIVE or ON_BREAK
+  // 2. Close active shifts for today
   Object.keys(store.activeShifts).forEach((empCode) => {
     const shift = store.activeShifts[empCode];
     if (shift && shift.date === todayStr && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) {
       shift.shiftState = "COMPLETED";
-      shift.checkOutTime = defaultCheckOutTime;
+      shift.checkOutTime = targetCheckOutTime;
       shift.checkOutTimestamp = Date.now();
       if (shift.breakStartedAt) {
         shift.totalBreakSeconds = (shift.totalBreakSeconds || 0) + Math.max(0, Math.floor((Date.now() - shift.breakStartedAt) / 1000));
@@ -1738,6 +1876,6 @@ export const autoCheckOutAllActiveEmployeesInStore = (options?: { checkOutTime?:
   return {
     success: true,
     checkedOutCount: count,
-    checkOutTime: defaultCheckOutTime,
+    checkOutTime: targetCheckOutTime,
   };
 };
