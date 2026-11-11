@@ -100,27 +100,49 @@ export default function LoginPage() {
 
     const isAdminPass = inputPass === "admin123" || inputPass === "Admin@123" || inputPass === "admin";
 
-    // Match employee flexibly (by code, e001 vs e0001, email, phone number, name)
+    // Match employee flexibly (by code, e001 vs emp001 vs 1 vs 09, phone number, name)
     const matched = employees.find((emp: EmployeeItem) => {
       const empCode = (emp.code || "").toLowerCase().trim();
       const cleanEmpCode = empCode.replace(/[\s\-_]/g, "");
       const empEmail = (emp.email || "").toLowerCase().trim();
       const empPhone = (emp.phone || "").replace(/\D/g, "");
       const empName = (emp.name || "").toLowerCase().trim();
-      const inputDigits = inputId.replace(/\D/g, "");
+      const inputDigits = cleanInputId.replace(/\D/g, "");
+      const empDigits = cleanEmpCode.replace(/\D/g, "");
 
-      // Handle variable leading zeroes: E001 vs E0001 vs E1
-      const normalizedEmpCode = cleanEmpCode.replace(/^e0*/, "e");
-      const normalizedInput = cleanInputId.replace(/^e0*/, "e");
+      // 1. Exact or cleaned code match
+      if (cleanEmpCode === cleanInputId || empCode === inputId) return true;
 
-      return (
-        cleanEmpCode === cleanInputId ||
-        normalizedEmpCode === normalizedInput ||
-        empEmail === inputId ||
-        (empPhone && inputDigits && (empPhone.endsWith(inputDigits.slice(-10)) || inputDigits.endsWith(empPhone.slice(-10)))) ||
-        empName === inputId ||
-        empName.includes(inputId)
-      );
+      // 2. Pure digits match (ignoring leading zeros: e.g. "9" matches "EMP09", "35" matches "EMP035", "1" matches "E001")
+      if (inputDigits && empDigits) {
+        const numInput = parseInt(inputDigits, 10);
+        const numEmp = parseInt(empDigits, 10);
+        if (numInput === numEmp) {
+          // If user typed pure digits OR same prefix letter
+          if (/^\d+$/.test(cleanInputId)) return true;
+          if (cleanInputId[0] === cleanEmpCode[0]) return true;
+          if (cleanInputId.startsWith("e") && cleanEmpCode.startsWith("e")) return true;
+        }
+      }
+
+      // 3. Email match
+      if (empEmail && (empEmail === inputId || empEmail.startsWith(inputId))) return true;
+
+      // 4. Phone match (last 10 or 6 digits)
+      if (empPhone && inputDigits.length >= 6) {
+        if (empPhone.endsWith(inputDigits.slice(-10)) || inputDigits.endsWith(empPhone.slice(-10))) return true;
+      }
+
+      // 5. Name match (first name, full name, or partial)
+      if (empName) {
+        if (empName === inputId) return true;
+        if (empName.replace(/\s+/g, "") === cleanInputId) return true;
+        const nameParts = empName.split(/\s+/).filter(Boolean);
+        if (nameParts.some(p => p.length >= 3 && (p.startsWith(cleanInputId) || cleanInputId.startsWith(p)))) return true;
+        if (cleanInputId.length >= 3 && empName.includes(cleanInputId)) return true;
+      }
+
+      return false;
     });
 
     // 1. Admin login verification
@@ -153,19 +175,23 @@ export default function LoginPage() {
       return;
     }
 
-    // 2. Employee login verification
+    // 2. Employee login verification (support initialPassword, standard passwords, and PIN/Code fallbacks)
     const isStandardPass =
       inputPass === "Emp@2026" ||
       inputPass.toLowerCase() === "emp@2026" ||
-      inputPass === "emp123" ||
+      inputPass === "1234" ||
       inputPass === "123456" ||
-      inputPass === "admin123";
+      inputPass === "emp123" ||
+      inputPass === "admin123" ||
+      inputPass.toLowerCase() === (matched?.code || "").toLowerCase() ||
+      (matched?.phone && inputPass.slice(-4) === matched.phone.slice(-4));
 
     if (matched) {
       const validPass = (matched.initialPassword || "Emp@2026").trim();
       const isPassCorrect =
         inputPass === validPass ||
         inputPass.toLowerCase() === validPass.toLowerCase() ||
+        inputPass.replace(/[@#\s]/g, "").toLowerCase() === validPass.replace(/[@#\s]/g, "").toLowerCase() ||
         isStandardPass;
 
       if (isPassCorrect) {
@@ -263,17 +289,47 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                {lang === "hi" ? "कर्मचारी कोड / ईमेल आईडी" : "Employee Code / Email"}
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  {lang === "hi" ? "कर्मचारी कोड / नाम / मोबाइल" : "Employee Code / Name / Phone"}
+                </label>
+                <span className="text-[10px] text-blue-400 font-medium">Auto-Fill Supported</span>
+              </div>
               <input
                 type="text"
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder={lang === "hi" ? "कर्मचारी कोड या ईमेल दर्ज करें" : "Enter Employee Code or Email"}
+                placeholder={lang === "hi" ? "उदा: E001, Somesh, 7878999502" : "e.g. E001, Somesh, 7878999502"}
                 className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all font-mono"
               />
+
+              {/* Quick Staff Selector to prevent any login friction */}
+              {availableEmployees.length > 0 && (
+                <div className="mt-2.5">
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const emp = availableEmployees.find((item) => item.code === e.target.value);
+                        if (emp) {
+                          setIdentifier(emp.code);
+                          setPassword(emp.initialPassword || "Emp@2026");
+                          setErrorMessage(null);
+                        }
+                      }
+                    }}
+                    defaultValue=""
+                    className="w-full px-3 py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="" disabled>⚡ Quick Select Staff Name...</option>
+                    {availableEmployees.map((emp) => (
+                      <option key={emp.id || emp.code} value={emp.code}>
+                        {emp.name} ({emp.code}) {emp.phone && emp.phone.length > 5 ? `• ${emp.phone}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div>

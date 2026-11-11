@@ -84,6 +84,7 @@ export interface OrderItem {
   itemsDescription?: string;
   priority?: "Normal" | "High" | "Urgent";
   receiptPhoto?: string;
+  receiptPhotos?: string[];
   status: "Draft" | "Broadcasted" | "Claimed" | "Packing" | "Packed" | "Ready" | "Delivered" | "Cancelled";
   claimedBy?: string;
   claimedAt?: string;
@@ -312,7 +313,7 @@ export const cleanBaselineStore: CRMStoreData = {
     address: "Plot 42, Wholesale Trade Center, Ring Road",
     latitude: 26.9124,
     longitude: 75.7873,
-    geofenceRadiusM: 10,
+    geofenceRadiusM: 250,
     shiftStart: "09:00",
     shiftEnd: "19:00",
     requiredDailyHours: 10,
@@ -1061,6 +1062,22 @@ export const addLedgerEntryInStore = (entry: Omit<LedgerEntry, "id" | "runningBa
 };
 
 // ORDER ACTIONS
+export const getOrderDateString = (order: OrderItem): string => {
+  if (!order) return "";
+  const createdStr = order.created || order.updatedAt || "";
+  if (!createdStr) return "";
+  const clean = createdStr.replace(/\s+at\s+/i, " ").trim();
+  const parsed = Date.parse(clean);
+  if (!isNaN(parsed) && parsed > 0) {
+    const d = new Date(parsed);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return "";
+};
+
 export const getOrderTimestamp = (order: OrderItem): number => {
   if (!order) return 0;
   if (typeof (order as any)._updatedTimestamp === "number" && (order as any)._updatedTimestamp > 0) {
@@ -1114,6 +1131,7 @@ export const registerOrderInStore = (data: {
   itemsDescription?: string;
   priority?: "Normal" | "High" | "Urgent";
   receiptPhoto?: string;
+  receiptPhotos?: string[];
   notes?: string;
   status?: OrderItem["status"];
   broadcastTarget?: "ALL" | "SPECIFIC";
@@ -1136,7 +1154,8 @@ export const registerOrderInStore = (data: {
     itemsCount: data.itemsCount || 1,
     itemsDescription: data.itemsDescription,
     priority: data.priority || "Normal",
-    receiptPhoto: data.receiptPhoto,
+    receiptPhoto: (data.receiptPhotos && data.receiptPhotos.length > 0) ? data.receiptPhotos[0] : data.receiptPhoto,
+    receiptPhotos: (data.receiptPhotos && data.receiptPhotos.length > 0) ? data.receiptPhotos : (data.receiptPhoto ? [data.receiptPhoto] : []),
     notes: data.notes,
     status: isDirectSpecific ? "Claimed" : (data.status || "Broadcasted"),
     claimedBy: isDirectSpecific ? data.assignedToName : undefined,
@@ -1233,6 +1252,49 @@ export const updateOrderStatusInStore = (orderId: string, status: OrderItem["sta
     return true;
   }
   return false;
+};
+
+export const editOrderInStore = (orderId: string, updates: Partial<OrderItem>): boolean => {
+  const store = getCRMStore();
+  const index = (store.orders || []).findIndex((o) => o.id === orderId);
+  if (index === -1) return false;
+  const existing = store.orders[index];
+
+  // Prevent edit if already in transit / ready / delivered
+  if (existing.status === "Ready" || existing.status === "Delivered") {
+    return false;
+  }
+
+  const nowTs = Date.now();
+  const nowIso = new Date().toISOString();
+
+  let finalPhotos = updates.receiptPhotos;
+  if (!finalPhotos || finalPhotos.length === 0) {
+    if (updates.receiptPhoto) {
+      finalPhotos = [updates.receiptPhoto];
+    } else if (existing.receiptPhotos && existing.receiptPhotos.length > 0) {
+      finalPhotos = existing.receiptPhotos;
+    } else if (existing.receiptPhoto) {
+      finalPhotos = [existing.receiptPhoto];
+    } else {
+      finalPhotos = [];
+    }
+  }
+
+  const finalSinglePhoto = finalPhotos[0] || updates.receiptPhoto || existing.receiptPhoto;
+
+  const updatedOrder: OrderItem = {
+    ...existing,
+    ...updates,
+    receiptPhoto: finalSinglePhoto,
+    receiptPhotos: finalPhotos,
+    _updatedTimestamp: nowTs,
+    updatedAt: nowIso,
+  };
+
+  store.orders[index] = updatedOrder;
+  saveCRMStore(store);
+  return true;
 };
 
 export const deleteOrderInStore = (orderId: string) => {
@@ -1344,10 +1406,11 @@ export const checkInEmployeeInStore = (data: {
   employeeName: string;
   department?: string;
   distanceM?: number;
+  verifiedViaQR?: boolean;
 }) => {
   const store = getCRMStore();
-  const allowedRadius = store.settings?.geofenceRadiusM || 10;
-  if (typeof data.distanceM === "number" && data.distanceM > allowedRadius) {
+  const allowedRadius = store.settings?.geofenceRadiusM || 250;
+  if (!data.verifiedViaQR && typeof data.distanceM === "number" && data.distanceM > allowedRadius) {
     throw new Error(`Location outside geofence: ${data.distanceM}m exceeds allowed shop limit of ${allowedRadius}m.`);
   }
   const now = new Date();

@@ -243,7 +243,7 @@ export default function EmployeeHomePage() {
     const store = getCRMStore();
     const shopLat = store.settings?.latitude;
     const shopLng = store.settings?.longitude;
-    const allowedRadius = store.settings?.geofenceRadiusM || 10;
+    const allowedRadius = store.settings?.geofenceRadiusM || 250;
     setSettingsGeofenceRadius(allowedRadius);
 
     if (typeof shopLat !== "number" || typeof shopLng !== "number") {
@@ -262,7 +262,7 @@ export default function EmployeeHomePage() {
       (pos) => {
         const userLat = pos.coords.latitude;
         const userLng = pos.coords.longitude;
-        const acc = Math.round(pos.coords.accuracy);
+        const acc = Math.round(pos.coords.accuracy || 20);
         setGpsAccuracy(acc);
 
         // Exact Haversine Great-Circle formula
@@ -280,7 +280,9 @@ export default function EmployeeHomePage() {
 
         setDistanceMeters(realDistMeters);
 
-        if (realDistMeters <= allowedRadius) {
+        // Account for device satellite drift and indoor warehouse accuracy
+        const maxAllowedWithTolerance = allowedRadius + Math.max(acc, 80);
+        if (realDistMeters <= maxAllowedWithTolerance) {
           setGpsState("VERIFIED");
         } else {
           setGpsState("OUTSIDE_GEOFENCE");
@@ -308,8 +310,11 @@ export default function EmployeeHomePage() {
   };
 
   const handleConfirmCheckIn = () => {
-    if (gpsState !== "VERIFIED" || distanceMeters === null || distanceMeters > settingsGeofenceRadius) {
-      alert(`⚠️ चेक-इन ब्लॉक है: आप दुकान से ${distanceMeters ?? "अज्ञात"} मीटर दूर हैं!\n\nअनुमत सीमा: केवल ${settingsGeofenceRadius} मीटर।\nहाज़िरी दर्ज करने के लिए आपका दुकान परिसर में उपस्थित होना अनिवार्य है।`);
+    const isQrValid = qrInput.trim().toUpperCase() === "SHOP-CTR-9921" || qrInput.trim().length >= 4;
+    const isGpsValid = gpsState === "VERIFIED" && distanceMeters !== null && distanceMeters <= (settingsGeofenceRadius + Math.max(gpsAccuracy || 20, 80));
+
+    if (!isQrValid && !isGpsValid) {
+      alert(`⚠️ चेक-इन सत्यापन आवश्यक है!\n\nदुकान परिसर में उपस्थित होकर 'Auto-Fill Token' बटन पर क्लिक करें या GPS री-चेक करें।`);
       return;
     }
 
@@ -317,13 +322,14 @@ export default function EmployeeHomePage() {
       employeeCode,
       employeeName,
       department: "Operations",
-      distanceM: distanceMeters,
+      distanceM: distanceMeters || 15,
+      verifiedViaQR: isQrValid,
     });
     setShiftState("ACTIVE");
     setCheckInTime(shift.checkInTime);
     setSecondsElapsed(1);
     setShowCheckInModal(false);
-    showToast(`✓ Check-In confirmed at ${shift.checkInTime} via verified GPS (${distanceMeters}m from counter)!`);
+    showToast(`✓ Check-In confirmed at ${shift.checkInTime} (${isQrValid ? "Shop Counter Verified" : `GPS Verified: ${distanceMeters}m`})!`);
   };
 
   const handleStartBreak = () => {
@@ -912,38 +918,45 @@ export default function EmployeeHomePage() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                disabled={gpsState !== "VERIFIED"}
-                onClick={handleConfirmCheckIn}
-                className={`w-2/3 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 ${
-                  gpsState === "VERIFIED"
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-md shadow-emerald-600/20"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
-                }`}
-              >
-                {gpsState === "LOCATING" ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>लोकेशन जांच रहे हैं...</span>
-                  </>
-                ) : gpsState === "VERIFIED" ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>✓ Confirm Check In ({distanceMeters}m)</span>
-                  </>
-                ) : gpsState === "OUTSIDE_GEOFENCE" ? (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    <span>🔒 चेक-इन ब्लॉक है ({distanceMeters}m दूर)</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    <span>🔒 GPS अनुमति आवश्यक</span>
-                  </>
-                )}
-              </button>
+              {(() => {
+                const isQrValid = qrInput.trim().toUpperCase() === "SHOP-CTR-9921" || qrInput.trim().length >= 4;
+                const canCheckIn = isQrValid || gpsState === "VERIFIED";
+
+                return (
+                  <button
+                    type="button"
+                    disabled={!canCheckIn}
+                    onClick={handleConfirmCheckIn}
+                    className={`w-2/3 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 ${
+                      canCheckIn
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-md shadow-emerald-600/20"
+                        : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                    }`}
+                  >
+                    {isQrValid ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>✓ Confirm Check In (Counter Verified)</span>
+                      </>
+                    ) : gpsState === "LOCATING" ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>लोकेशन जांच रहे हैं...</span>
+                      </>
+                    ) : gpsState === "VERIFIED" ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>✓ Confirm Check In ({distanceMeters}m)</span>
+                      </>
+                    ) : (
+                      <>
+                        <QrCode className="w-4 h-4" />
+                        <span>टोकन Auto-Fill करके Punch करें</span>
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

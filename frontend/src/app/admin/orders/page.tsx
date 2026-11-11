@@ -16,6 +16,7 @@ import {
   X,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
   Radio,
   Send,
   User,
@@ -25,6 +26,10 @@ import {
   Trash2,
   Check,
   AlertCircle,
+  Edit3,
+  Calendar,
+  Layers,
+  ArrowUpDown,
 } from "lucide-react";
 
 import {
@@ -34,8 +39,10 @@ import {
   registerOrderInStore,
   updateOrderStatusInStore,
   deleteOrderInStore,
+  editOrderInStore,
   subscribeToCRMStore,
   getOrderTimestamp,
+  getOrderDateString,
   sortOrdersNewestFirst,
   OrderItem,
   EmployeeItem,
@@ -47,12 +54,32 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("Any");
+  const [dateFilter, setDateFilter] = useState<"ALL" | "TODAY" | "YESTERDAY" | "LAST_7" | "THIS_MONTH" | "CUSTOM">("ALL");
+  const [customDate, setCustomDate] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("Any");
+  const [assigneeFilter, setAssigneeFilter] = useState("Any");
   const [searchFilter, setSearchFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"NEWEST" | "OLDEST" | "PRIORITY" | "ITEMS_DESC" | "CUSTOMER_ASC" | "CUSTOMER_DESC">("NEWEST");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Modals
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [viewingParchiOrder, setViewingParchiOrder] = useState<OrderItem | null>(null);
+  const [activeSlipIndex, setActiveSlipIndex] = useState(0);
+
+  // Edit Modal State
+  const [editingOrder, setEditingOrder] = useState<OrderItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    customerName: "",
+    customerPhone: "",
+    address: "",
+    itemCount: "1",
+    itemsDescription: "",
+    priority: "Normal" as "Normal" | "High" | "Urgent",
+    notes: "",
+    fileDataUrls: [] as string[],
+  });
 
   // Sync with unified reactive store across all tabs & windows
   React.useEffect(() => {
@@ -67,7 +94,7 @@ export default function OrdersPage() {
     return () => unsubscribe();
   }, []);
 
-  // Register Order Form State (NO AMOUNT, NO PAYMENT MODE as requested)
+  // Register Order Form State (Multiple Slips Supported)
   const [newOrder, setNewOrder] = useState({
     orderCode: "",
     customerName: "",
@@ -77,8 +104,7 @@ export default function OrdersPage() {
     itemsDescription: "",
     priority: "Normal" as "Normal" | "High" | "Urgent",
     notes: "",
-    fileName: "",
-    fileDataUrl: "",
+    fileDataUrls: [] as string[],
     assigneeCode: "ALL", // "ALL" = Open Pool, or specific employee code
   });
 
@@ -87,9 +113,14 @@ export default function OrdersPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleClear = () => {
+  const handleClearFilters = () => {
     setStatusFilter("Any");
+    setDateFilter("ALL");
+    setCustomDate("");
+    setPriorityFilter("Any");
+    setAssigneeFilter("Any");
     setSearchFilter("");
+    setSortBy("NEWEST");
   };
 
   const handleCreateOrder = (e: React.FormEvent) => {
@@ -110,7 +141,8 @@ export default function OrdersPage() {
       itemsCount: Number(newOrder.itemCount) || 1,
       itemsDescription: newOrder.itemsDescription.trim() || `${newOrder.itemCount || 1} items parcel`,
       priority: newOrder.priority,
-      receiptPhoto: newOrder.fileDataUrl || (newOrder.fileName ? "uploaded_parchi.jpg" : undefined),
+      receiptPhoto: newOrder.fileDataUrls[0] || undefined,
+      receiptPhotos: newOrder.fileDataUrls.length > 0 ? newOrder.fileDataUrls : undefined,
       status: isDirect ? "Claimed" : "Broadcasted",
       notes: newOrder.notes.trim() || undefined,
       broadcastTarget: isDirect ? "SPECIFIC" : "ALL",
@@ -135,10 +167,75 @@ export default function OrdersPage() {
       itemsDescription: "",
       priority: "Normal",
       notes: "",
-      fileName: "",
-      fileDataUrl: "",
+      fileDataUrls: [],
       assigneeCode: "ALL",
     });
+  };
+
+  // Open Edit Modal for order before transit
+  const handleOpenEditModal = (order: OrderItem) => {
+    if (order.status === "Ready" || order.status === "Delivered") {
+      alert("This order is already in transit / delivered and cannot be modified.");
+      return;
+    }
+
+    const initialSlips = (order.receiptPhotos && order.receiptPhotos.length > 0)
+      ? [...order.receiptPhotos]
+      : (order.receiptPhoto ? [order.receiptPhoto] : []);
+
+    setEditingOrder(order);
+    setEditForm({
+      customerName: order.customerName || "",
+      customerPhone: order.phone === "—" ? "" : (order.phone || ""),
+      address: order.address === "Local Shop Delivery" ? "" : (order.address || ""),
+      itemCount: String(order.itemsCount || 1),
+      itemsDescription: order.itemsDescription || "",
+      priority: order.priority || "Normal",
+      notes: order.notes || "",
+      fileDataUrls: initialSlips,
+    });
+  };
+
+  const handleSaveEditOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+    if (!editForm.customerName.trim()) {
+      alert("Customer Name is required!");
+      return;
+    }
+
+    const success = editOrderInStore(editingOrder.id, {
+      customerName: editForm.customerName.trim(),
+      phone: editForm.customerPhone.trim() || "—",
+      address: editForm.address.trim() || "Local Shop Delivery",
+      itemsCount: Number(editForm.itemCount) || 1,
+      itemsDescription: editForm.itemsDescription.trim() || `${editForm.itemCount || 1} items parcel`,
+      priority: editForm.priority,
+      notes: editForm.notes.trim() || undefined,
+      receiptPhoto: editForm.fileDataUrls[0] || undefined,
+      receiptPhotos: editForm.fileDataUrls,
+    });
+
+    if (success) {
+      showToast(`✓ Order ${editingOrder.orderCode} updated successfully!`);
+      if (selectedOrder?.id === editingOrder.id) {
+        setSelectedOrder((prev) => prev ? {
+          ...prev,
+          customerName: editForm.customerName.trim(),
+          phone: editForm.customerPhone.trim() || "—",
+          address: editForm.address.trim() || "Local Shop Delivery",
+          itemsCount: Number(editForm.itemCount) || 1,
+          itemsDescription: editForm.itemsDescription.trim(),
+          priority: editForm.priority,
+          notes: editForm.notes.trim(),
+          receiptPhotos: editForm.fileDataUrls,
+          receiptPhoto: editForm.fileDataUrls[0],
+        } : null);
+      }
+      setEditingOrder(null);
+    } else {
+      alert("Could not update order. Status may already be in transit or delivered.");
+    }
   };
 
   const advanceOrderStatus = (order: OrderItem) => {
@@ -155,33 +252,98 @@ export default function OrdersPage() {
   };
 
   const deleteOrder = (orderId: string) => {
-    deleteOrderInStore(orderId);
-    if (selectedOrder?.id === orderId) setSelectedOrder(null);
-    showToast("Order removed from queue");
+    if (confirm("Are you sure you want to delete this order?")) {
+      deleteOrderInStore(orderId);
+      if (selectedOrder?.id === orderId) setSelectedOrder(null);
+      showToast("Order removed from queue");
+    }
   };
 
-  const [sortBy, setSortBy] = useState<"NEWEST" | "OLDEST" | "PRIORITY" | "CUSTOMER">("NEWEST");
+  // Helper date calculations for filters
+  const todayStr = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  })();
 
+  const yesterdayStr = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  })();
+
+  const currentMonthPrefix = todayStr.slice(0, 7); // YYYY-MM
+
+  // Filter Orders
   const filteredOrders = orders.filter((ord) => {
     const deletedSet = getDeletedOrderIds();
     if (ord.isDeleted || deletedSet.has(ord.id)) {
       return false;
     }
+
+    // Status filter
     if (statusFilter !== "Any" && ord.status !== statusFilter) {
       return false;
     }
+
+    // Priority filter
+    if (priorityFilter !== "Any" && (ord.priority || "Normal") !== priorityFilter) {
+      return false;
+    }
+
+    // Assignee filter
+    if (assigneeFilter !== "Any") {
+      if (assigneeFilter === "UNCLAIMED") {
+        if (ord.claimedBy || ord.assignedToName) return false;
+      } else {
+        const matchesAssignee =
+          ord.assignedToCode === assigneeFilter ||
+          (ord.claimedBy && ord.claimedBy.toLowerCase().includes(assigneeFilter.toLowerCase()));
+        if (!matchesAssignee) return false;
+      }
+    }
+
+    // Date Filter
+    if (dateFilter !== "ALL") {
+      const ordDate = getOrderDateString(ord);
+      const ordTs = getOrderTimestamp(ord);
+
+      if (dateFilter === "TODAY") {
+        if (ordDate !== todayStr) return false;
+      } else if (dateFilter === "YESTERDAY") {
+        if (ordDate !== yesterdayStr) return false;
+      } else if (dateFilter === "LAST_7") {
+        const sevenDaysAgoTs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        if (ordTs < sevenDaysAgoTs) return false;
+      } else if (dateFilter === "THIS_MONTH") {
+        if (!ordDate.startsWith(currentMonthPrefix)) return false;
+      } else if (dateFilter === "CUSTOM") {
+        if (customDate && ordDate !== customDate) return false;
+      }
+    }
+
+    // Search filter
     if (searchFilter) {
-      const q = searchFilter.toLowerCase();
+      const q = searchFilter.toLowerCase().trim();
       const match =
-        ord.orderCode.toLowerCase().includes(q) ||
-        ord.customerName.toLowerCase().includes(q) ||
-        ord.phone.toLowerCase().includes(q) ||
-        (ord.claimedBy && ord.claimedBy.toLowerCase().includes(q));
+        (ord.orderCode || "").toLowerCase().includes(q) ||
+        (ord.customerName || "").toLowerCase().includes(q) ||
+        (ord.phone || "").toLowerCase().includes(q) ||
+        (ord.itemsDescription || "").toLowerCase().includes(q) ||
+        (ord.notes || "").toLowerCase().includes(q) ||
+        (ord.claimedBy || "").toLowerCase().includes(q);
       if (!match) return false;
     }
+
     return true;
   });
 
+  // Sort Orders
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     if (sortBy === "NEWEST" || sortBy === "OLDEST") {
       const timeA = getOrderTimestamp(a);
@@ -193,12 +355,18 @@ export default function OrdersPage() {
       const codeB = parseInt(String(b.orderCode || "").replace(/\D/g, "") || "0", 10);
       return sortBy === "NEWEST" ? codeB - codeA : codeA - codeB;
     }
-    if (sortBy === "CUSTOMER") {
+    if (sortBy === "CUSTOMER_ASC") {
       return (a.customerName || "").localeCompare(b.customerName || "");
+    }
+    if (sortBy === "CUSTOMER_DESC") {
+      return (b.customerName || "").localeCompare(a.customerName || "");
     }
     if (sortBy === "PRIORITY") {
       const weight: Record<string, number> = { Urgent: 3, High: 2, Normal: 1 };
       return (weight[b.priority || "Normal"] || 1) - (weight[a.priority || "Normal"] || 1);
+    }
+    if (sortBy === "ITEMS_DESC") {
+      return (b.itemsCount || 1) - (a.itemsCount || 1);
     }
     return 0;
   });
@@ -244,6 +412,10 @@ export default function OrdersPage() {
     }
   };
 
+  const isEditableBeforeTransit = (status: OrderItem["status"]) => {
+    return status !== "Ready" && status !== "Delivered" && status !== "Cancelled";
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -258,15 +430,16 @@ export default function OrdersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Order Broadcast & Dispatch</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Register customer orders with parchi slip photos and broadcast to the workforce queue.
+          <p className="text-xs text-slate-500 mt-1">
+            Register customer orders with multiple parchi slips, live pool broadcast, and instant editing before transit.
           </p>
         </div>
+
         <button
           onClick={() => setShowRegisterModal(true)}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+          className="flex items-center gap-2 bg-[#1a73e8] hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer shrink-0"
         >
-          <Plus size={18} />
+          <Plus size={16} />
           <span>+ Register Order</span>
         </button>
       </div>
@@ -294,16 +467,16 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {/* Search & Filter Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+      {/* Comprehensive Search & Multi-Filter Bar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
           {/* Status Filter */}
-          <div className="sm:col-span-3 space-y-1.5">
+          <div className="sm:col-span-2 space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">Status</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium cursor-pointer"
             >
               <option value="Any">Any Status</option>
               <option value="Broadcasted">Broadcasted (Pool)</option>
@@ -314,182 +487,281 @@ export default function OrdersPage() {
             </select>
           </div>
 
+          {/* Date Filter */}
+          <div className="sm:col-span-3 space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" /> Filter by Date
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value as any)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium cursor-pointer"
+              >
+                <option value="ALL">All Dates (पूरा इतिहास)</option>
+                <option value="TODAY">Today (आज)</option>
+                <option value="YESTERDAY">Yesterday (कल)</option>
+                <option value="LAST_7">Last 7 Days (पिछले 7 दिन)</option>
+                <option value="THIS_MONTH">This Month (इस महीने)</option>
+                <option value="CUSTOM">Specific Date (तारीख चुनें)...</option>
+              </select>
+
+              {dateFilter === "CUSTOM" && (
+                <input
+                  type="date"
+                  value={customDate}
+                  onChange={(e) => setCustomDate(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white font-mono cursor-pointer"
+                />
+              )}
+            </div>
+          </div>
+
           {/* Sort By Date/Time */}
           <div className="sm:col-span-3 space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Sort By Date / Time</label>
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+              <ArrowUpDown className="w-3.5 h-3.5 text-purple-600" /> Sort Orders
+            </label>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium cursor-pointer"
             >
               <option value="NEWEST">Date & Time (Newest First)</option>
               <option value="OLDEST">Date & Time (Oldest First)</option>
               <option value="PRIORITY">Priority (Urgent First)</option>
-              <option value="CUSTOMER">Customer Name (A-Z)</option>
+              <option value="ITEMS_DESC">Items Count (High to Low)</option>
+              <option value="CUSTOMER_ASC">Customer Name (A to Z)</option>
+              <option value="CUSTOMER_DESC">Customer Name (Z to A)</option>
             </select>
           </div>
 
-          {/* Search */}
-          <div className="sm:col-span-4 space-y-1.5">
+          {/* Search Box */}
+          <div className="sm:col-span-3 space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">Search Orders</label>
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search order code, customer name, phone or rider..."
+                placeholder="Search code, customer, phone, notes..."
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
             </div>
           </div>
 
-          {/* Clear */}
-          <div className="sm:col-span-2">
+          {/* Clear Filters Button */}
+          <div className="sm:col-span-1">
             <button
-              onClick={handleClear}
-              className="w-full px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+              onClick={handleClearFilters}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold transition-colors cursor-pointer text-center"
+              title="Reset all filters"
             >
               Clear
             </button>
           </div>
         </div>
+
+        {/* Secondary Filter Row: Priority & Staff Assignment */}
+        <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-slate-100 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+            <Filter size={13} className="text-slate-400" />
+            <span>Priority:</span>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 font-medium"
+            >
+              <option value="Any">All Priorities</option>
+              <option value="Urgent">🚨 Urgent</option>
+              <option value="High">⚡ High</option>
+              <option value="Normal">Normal</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+            <User size={13} className="text-slate-400" />
+            <span>Rider / Staff:</span>
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 font-medium max-w-[200px]"
+            >
+              <option value="Any">All Staff</option>
+              <option value="UNCLAIMED">Unclaimed Pool</option>
+              {employees.map((emp) => (
+                <option key={emp.id || emp.code} value={emp.code}>
+                  {emp.name} ({emp.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="ml-auto text-[11px] text-slate-400 font-mono">
+            Showing <strong>{sortedOrders.length}</strong> of {orders.length} orders
+          </div>
+        </div>
       </div>
 
       {/* Orders Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-              <tr>
-                <th className="py-3.5 px-5">Order Code</th>
-                <th className="py-3.5 px-5">Customer Details</th>
-                <th className="py-3.5 px-5">Items / Parchi Slip</th>
-                <th className="py-3.5 px-5">Status</th>
-                <th className="py-3.5 px-5">Claimed By</th>
-                <th className="py-3.5 px-5">Created Time</th>
-                <th className="py-3.5 px-5 text-right">Actions</th>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-5">Order Code</th>
+                <th className="py-3 px-5">Customer Details</th>
+                <th className="py-3 px-5">Items / Parchi Slip</th>
+                <th className="py-3 px-5">Status</th>
+                <th className="py-3 px-5">Claimed By</th>
+                <th className="py-3 px-5">Created Time</th>
+                <th className="py-3 px-5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
-              {sortedOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
-                  onClick={() => setSelectedOrder(order)}
-                >
-                  {/* Order Code */}
-                  <td className="py-3.5 px-5">
-                    <span className="font-mono text-xs font-bold text-[#1a73e8] bg-blue-50 px-2 py-1 rounded-md">
-                      {order.orderCode}
-                    </span>
-                    {order.priority && order.priority !== "Normal" && (
-                      <span
-                        className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          order.priority === "Urgent"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {order.priority}
-                      </span>
-                    )}
-                  </td>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {sortedOrders.map((order) => {
+                const slips = (order.receiptPhotos && order.receiptPhotos.length > 0)
+                  ? order.receiptPhotos
+                  : (order.receiptPhoto ? [order.receiptPhoto] : []);
 
-                  {/* Customer Info */}
-                  <td className="py-3.5 px-5">
-                    <div className="font-semibold text-slate-900">{order.customerName}</div>
-                    <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5 font-mono">
-                      <Phone className="w-3 h-3 text-slate-400" />
-                      {order.phone}
-                    </div>
-                  </td>
-
-                  {/* Items / Parchi */}
-                  <td className="py-3.5 px-5" onClick={(e) => e.stopPropagation()}>
-                    {order.receiptPhoto ? (
-                      <button
-                        onClick={() => setViewingParchiOrder(order)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer border border-blue-200/60"
-                      >
-                        <ImageIcon className="w-3.5 h-3.5" />
-                        Parchi Slip ({order.itemsCount} items)
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-700 font-medium flex items-center gap-1">
-                        <Package className="w-3.5 h-3.5 text-slate-400" />
-                        {order.itemsCount} items parcel
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Status */}
-                  <td className="py-3.5 px-5">{getStatusBadge(order.status)}</td>
-
-                  {/* Claimed By */}
-                  <td className="py-3.5 px-5">
-                    {order.claimedBy ? (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px]">
-                            {order.claimedBy.charAt(0)}
-                          </div>
-                          <span className="text-xs font-semibold text-slate-800">{order.claimedBy}</span>
-                        </div>
-                        {order.broadcastTarget === "SPECIFIC" && (
-                          <span className="inline-block text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
-                            Direct Assigned
+                return (
+                  <tr
+                    key={order.id}
+                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    {/* Order Code */}
+                    <td className="py-3.5 px-5 font-mono font-bold text-slate-900">
+                      <div className="flex items-center gap-2">
+                        <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">
+                          {order.orderCode}
+                        </span>
+                        {order.priority === "Urgent" && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
+                            Urgent
                           </span>
                         )}
                       </div>
-                    ) : (
-                      <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md">
-                        Unclaimed Pool
-                      </span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* Created Time */}
-                  <td className="py-3.5 px-5 text-xs text-slate-500 font-mono">
-                    <div>{order.created}</div>
-                    {order.createdByRole === "EMPLOYEE" && (
-                      <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-sans">
-                        Emp: {order.createdByName}
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Quick Actions */}
-                  <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1.5">
-                      {order.status !== "Delivered" && (
-                        <button
-                          onClick={() => advanceOrderStatus(order)}
-                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                          title="Advance status"
-                        >
-                          Next Step →
-                        </button>
+                    {/* Customer */}
+                    <td className="py-3.5 px-5">
+                      <div className="font-semibold text-slate-900">{order.customerName}</div>
+                      <div className="text-slate-500 font-mono flex items-center gap-1 text-[11px] mt-0.5">
+                        <Phone className="w-3 h-3 text-slate-400" />
+                        {order.phone}
+                      </div>
+                      {order.address && (
+                        <div className="text-slate-400 text-[10px] truncate max-w-[200px] mt-0.5">
+                          {order.address}
+                        </div>
                       )}
-                      <button
-                        onClick={() => setSelectedOrder(order)}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => deleteOrder(order.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Order"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredOrders.length === 0 && (
+                    </td>
+
+                    {/* Items / Slips */}
+                    <td className="py-3.5 px-5" onClick={(e) => e.stopPropagation()}>
+                      {slips.length > 0 ? (
+                        <button
+                          onClick={() => {
+                            setViewingParchiOrder(order);
+                            setActiveSlipIndex(0);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition-all font-semibold text-xs cursor-pointer"
+                          title="View Paper Parchi Slip"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Parchi Slip {slips.length > 1 ? `(${slips.length})` : ""}</span>
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/60 font-medium">
+                          <Package className="w-3.5 h-3.5 text-slate-400" />
+                          {order.itemsCount} items parcel
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-3.5 px-5">{getStatusBadge(order.status)}</td>
+
+                    {/* Claimed By */}
+                    <td className="py-3.5 px-5">
+                      {order.claimedBy ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px]">
+                              {order.claimedBy.charAt(0)}
+                            </div>
+                            <span className="text-xs font-semibold text-slate-800">{order.claimedBy}</span>
+                          </div>
+                          {order.broadcastTarget === "SPECIFIC" && (
+                            <span className="inline-block text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
+                              Direct Assigned
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md">
+                          Unclaimed Pool
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Created Time */}
+                    <td className="py-3.5 px-5 text-xs text-slate-500 font-mono">
+                      <div>{order.created}</div>
+                      {order.createdByRole === "EMPLOYEE" && (
+                        <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-sans">
+                          Emp: {order.createdByName}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Quick Actions */}
+                    <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        {/* Edit Button (Enabled before transit) */}
+                        {isEditableBeforeTransit(order.status) && (
+                          <button
+                            onClick={() => handleOpenEditModal(order)}
+                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Order (Before Transit)"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {order.status !== "Delivered" && (
+                          <button
+                            onClick={() => advanceOrderStatus(order)}
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                            title="Advance status"
+                          >
+                            Next Step →
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="View Details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => deleteOrder(order.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {sortedOrders.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
@@ -502,7 +774,7 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* REGISTER ORDER MODAL (NO AMOUNT, NO PAYMENT MODE) */}
+      {/* REGISTER ORDER MODAL (MULTIPLE SLIPS SUPPORTED) */}
       {showRegisterModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -510,7 +782,7 @@ export default function OrdersPage() {
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Register & Broadcast Order</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Attach parchi photo receipt or item count to broadcast instantly to staff.
+                  Attach one or multiple parchi slip photos and broadcast directly to staff.
                 </p>
               </div>
               <button
@@ -523,54 +795,17 @@ export default function OrdersPage() {
 
             <form onSubmit={handleCreateOrder} className="space-y-4 pt-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Order Code */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Order Code</label>
-                  <input
-                    type="text"
-                    placeholder="Leave blank to auto-generate"
-                    value={newOrder.orderCode}
-                    onChange={(e) => setNewOrder({ ...newOrder, orderCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
-                  />
-                </div>
-
-                {/* Priority */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Priority Level</label>
-                  <select
-                    value={newOrder.priority}
-                    onChange={(e) =>
-                      setNewOrder({ ...newOrder, priority: e.target.value as "Normal" | "High" | "Urgent" })
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-semibold"
-                  >
-                    <option value="Normal">Normal Priority</option>
-                    <option value="High">High Priority</option>
-                    <option value="Urgent">Urgent (Express)</option>
-                  </select>
-                </div>
-
-                {/* Broadcast / Assignee Selector */}
-                <div className="sm:col-span-2 space-y-1.5 p-3.5 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200 rounded-2xl">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-blue-600" /> Broadcast / Assign Target *
-                    </label>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      newOrder.assigneeCode === "ALL"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-purple-100 text-purple-800"
-                    }`}>
-                      {newOrder.assigneeCode === "ALL" ? "📢 Open Pool (All Staff)" : "👤 Direct Assigned"}
-                    </span>
-                  </div>
+                {/* Broadcast Target */}
+                <div className="sm:col-span-2 space-y-1.5 p-3 rounded-2xl bg-blue-50/70 border border-blue-200">
+                  <label className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-blue-700" /> Broadcast Assignment Target:
+                  </label>
                   <select
                     value={newOrder.assigneeCode}
                     onChange={(e) => setNewOrder({ ...newOrder, assigneeCode: e.target.value })}
                     className="w-full bg-white border border-blue-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                   >
-                    <option value="ALL">📢 Broadcast to All Employees (Open Pool - कोई भी कर्मचारी क्लेम कर सकता है)</option>
+                    <option value="ALL">📢 Broadcast to All Employees (Open Pool)</option>
                     <optgroup label="Directly Assign to Specific Employee:">
                       {employees.map((emp) => (
                         <option key={emp.id} value={emp.code}>
@@ -579,16 +814,6 @@ export default function OrdersPage() {
                       ))}
                     </optgroup>
                   </select>
-                  {newOrder.assigneeCode !== "ALL" ? (
-                    <p className="text-[11px] text-purple-800 font-medium flex items-center gap-1 pt-0.5">
-                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      Order will be directly given to {employees.find((e) => e.code === newOrder.assigneeCode)?.name}. It will immediately show in their &quot;My Orders&quot; section as <strong>Claimed</strong>.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-blue-800 font-medium pt-0.5">
-                      Order will be broadcasted to the common shop pool. All employees will receive a real-time notification to claim it.
-                    </p>
-                  )}
                 </div>
 
                 {/* Customer Name */}
@@ -649,56 +874,113 @@ export default function OrdersPage() {
                 <label className="text-xs font-semibold text-slate-700">Items Summary / Notes</label>
                 <textarea
                   rows={2}
-                  placeholder="Optional brief list of items or special handling instructions..."
+                  placeholder="Optional: List items, sizes, quantities, or special instructions..."
                   value={newOrder.itemsDescription}
                   onChange={(e) => setNewOrder({ ...newOrder, itemsDescription: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
 
-              {/* Parchi Photo Upload */}
-              <div className="space-y-1.5 p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
-                <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                  <ImageIcon className="w-4 h-4 text-blue-600" /> Order Photo / Paper Parchi Slip Upload
-                </label>
+              {/* Priority */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Order Priority</label>
+                <div className="flex items-center gap-3">
+                  {(["Normal", "High", "Urgent"] as const).map((p) => (
+                    <label
+                      key={p}
+                      className={`flex-1 py-2 px-3 border rounded-xl text-xs font-bold text-center cursor-pointer transition-all ${
+                        newOrder.priority === p
+                          ? p === "Urgent"
+                            ? "bg-red-500 text-white border-red-500 shadow-sm"
+                            : p === "High"
+                            ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                            : "bg-slate-900 text-white border-slate-900 shadow-sm"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="priority"
+                        className="sr-only"
+                        checked={newOrder.priority === p}
+                        onChange={() => setNewOrder({ ...newOrder, priority: p })}
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Multiple Parchi Slip Uploads */}
+              <div className="space-y-2 p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-blue-600" /> Upload Parchi Slips (Multiple Slips Allowed)
+                  </label>
+                  <span className="text-[11px] font-mono font-bold text-blue-700">
+                    {newOrder.fileDataUrls.length} Slips Attached
+                  </span>
+                </div>
                 <p className="text-[11px] text-blue-700/80">
-                  Upload paper bill/receipt photo so employees can pack without manual item typing.
+                  Select one or multiple photos of paper slips. Employees will view all uploaded slips while packing.
                 </p>
+
                 <div className="mt-2 flex items-center gap-3">
                   <input
                     type="file"
+                    multiple
                     accept="image/*"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        try {
-                          const compressed = await compressImage(file, 800, 800, 0.65);
-                          setNewOrder((prev) => ({
-                            ...prev,
-                            fileName: file.name,
-                            fileDataUrl: compressed,
-                          }));
-                        } catch {
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            setNewOrder((prev) => ({
-                              ...prev,
-                              fileName: file.name,
-                              fileDataUrl: (event.target?.result as string) || "",
-                            }));
-                          };
-                          reader.readAsDataURL(file);
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) {
+                        const newSlips: string[] = [];
+                        for (const file of files) {
+                          try {
+                            const compressed = await compressImage(file, 900, 900, 0.65);
+                            newSlips.push(compressed);
+                          } catch {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const res = event.target?.result as string;
+                              if (res) newSlips.push(res);
+                            };
+                            reader.readAsDataURL(file);
+                          }
                         }
+                        setNewOrder((prev) => ({
+                          ...prev,
+                          fileDataUrls: [...prev.fileDataUrls, ...newSlips],
+                        }));
                       }
                     }}
                     className="text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
                   />
-                  {newOrder.fileName && (
-                    <span className="text-xs font-mono font-bold text-emerald-700 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> {newOrder.fileName} (Ready)
-                    </span>
-                  )}
                 </div>
+
+                {/* Preview Thumbnail Grid */}
+                {newOrder.fileDataUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {newOrder.fileDataUrls.map((url, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-xl border border-blue-200 overflow-hidden bg-white shadow-xs group">
+                        <img src={url} alt={`Slip ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setNewOrder((prev) => ({
+                            ...prev,
+                            fileDataUrls: prev.fileDataUrls.filter((_, i) => i !== idx),
+                          }))}
+                          className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-md hover:bg-red-700 cursor-pointer"
+                          title="Remove Slip"
+                        >
+                          ×
+                        </button>
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white text-center font-mono py-0.2">
+                          #{idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
@@ -721,81 +1003,332 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* PARCHI SLIP VIEWER MODAL */}
-      {viewingParchiOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                  {viewingParchiOrder.orderCode}
-                </span>
-                <h3 className="text-sm font-bold text-slate-900">Parchi Receipt Slip Photo</h3>
+      {/* EDIT ORDER MODAL (BEFORE TRANSIT) */}
+      {editingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-200">
+                    {editingOrder.orderCode}
+                  </span>
+                  <span className="text-xs font-bold text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded-full">
+                    ✏️ Edit Mode (Before Transit)
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mt-1">Update Order Details</h3>
               </div>
               <button
-                onClick={() => setViewingParchiOrder(null)}
+                onClick={() => setEditingOrder(null)}
                 className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            {/* If uploaded image exists */}
-            {viewingParchiOrder.receiptPhoto && viewingParchiOrder.receiptPhoto.startsWith("data:image") ? (
-              <div className="space-y-2">
-                <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center">
-                  <img
-                    src={viewingParchiOrder.receiptPhoto}
-                    alt={`Parchi ${viewingParchiOrder.orderCode}`}
-                    className="max-h-[60vh] w-full object-contain rounded-xl"
+            <form onSubmit={handleSaveEditOrder} className="space-y-4 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Customer Name */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Customer / Business Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.customerName}
+                    onChange={(e) => setEditForm({ ...editForm, customerName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-medium"
                   />
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
-                  <span>Customer: {viewingParchiOrder.customerName}</span>
-                  <span>{viewingParchiOrder.phone}</span>
-                </div>
-              </div>
-            ) : (
-              /* Paper Slip Graphic fallback */
-              <div className="p-5 bg-amber-50/70 border border-amber-200 rounded-2xl font-mono text-xs text-amber-950 space-y-3 shadow-inner">
-                <div className="text-center border-b border-amber-200/80 pb-2">
-                  <div className="font-bold text-sm tracking-wider uppercase">Order Parchi Slip</div>
-                  <div className="text-[11px] text-amber-800">{viewingParchiOrder.customerName}</div>
-                  <div className="text-[10px] text-amber-700">{viewingParchiOrder.phone}</div>
+
+                {/* Customer Phone */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Customer Phone</label>
+                  <input
+                    type="tel"
+                    value={editForm.customerPhone}
+                    onChange={(e) => setEditForm({ ...editForm, customerPhone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-mono"
+                  />
                 </div>
 
-                <div className="space-y-1 text-[11px]">
-                  <div className="flex justify-between font-bold border-b border-amber-200 pb-1">
-                    <span>Item Summary</span>
-                    <span>Qty: {viewingParchiOrder.itemsCount}</span>
+                {/* Item Count */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Item Count</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editForm.itemCount}
+                    onChange={(e) => setEditForm({ ...editForm, itemCount: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-mono"
+                  />
+                </div>
+
+                {/* Delivery Address */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Delivery Address / Shop</label>
+                  <input
+                    type="text"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  />
+                </div>
+              </div>
+
+              {/* Items / Description */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Items Summary / Notes</label>
+                <textarea
+                  rows={2}
+                  value={editForm.itemsDescription}
+                  onChange={(e) => setEditForm({ ...editForm, itemsDescription: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              {/* Priority */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Order Priority</label>
+                <div className="flex items-center gap-3">
+                  {(["Normal", "High", "Urgent"] as const).map((p) => (
+                    <label
+                      key={p}
+                      className={`flex-1 py-2 px-3 border rounded-xl text-xs font-bold text-center cursor-pointer transition-all ${
+                        editForm.priority === p
+                          ? p === "Urgent"
+                            ? "bg-red-500 text-white border-red-500"
+                            : p === "High"
+                            ? "bg-amber-500 text-white border-amber-500"
+                            : "bg-slate-900 text-white border-slate-900"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="edit-priority"
+                        className="sr-only"
+                        checked={editForm.priority === p}
+                        onChange={() => setEditForm({ ...editForm, priority: p })}
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Multiple Slips Manager in Edit */}
+              <div className="space-y-2 p-4 rounded-2xl bg-amber-50/50 border border-amber-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-amber-600" /> Manage Parchi Slips ({editForm.fileDataUrls.length})
+                  </label>
+                  <label className="text-xs font-bold text-blue-600 hover:underline cursor-pointer flex items-center gap-1">
+                    <Plus size={13} /> Add More Slips
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length > 0) {
+                          const newSlips: string[] = [];
+                          for (const file of files) {
+                            try {
+                              const compressed = await compressImage(file, 900, 900, 0.65);
+                              newSlips.push(compressed);
+                            } catch {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const res = event.target?.result as string;
+                                if (res) newSlips.push(res);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }
+                          setEditForm((prev) => ({
+                            ...prev,
+                            fileDataUrls: [...prev.fileDataUrls, ...newSlips],
+                          }));
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {/* Thumbnails */}
+                {editForm.fileDataUrls.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {editForm.fileDataUrls.map((url, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-xl border border-amber-300 overflow-hidden bg-white shadow-xs group">
+                        <img src={url} alt={`Slip ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setEditForm((prev) => ({
+                            ...prev,
+                            fileDataUrls: prev.fileDataUrls.filter((_, i) => i !== idx),
+                          }))}
+                          className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-md hover:bg-red-700 cursor-pointer"
+                          title="Remove Slip"
+                        >
+                          ×
+                        </button>
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white text-center font-mono py-0.2">
+                          #{idx + 1}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-amber-900 italic py-1">
-                    {viewingParchiOrder.itemsDescription || `${viewingParchiOrder.itemsCount} items requested`}
-                  </p>
-                  {viewingParchiOrder.address && (
-                    <div className="pt-2 text-[10px] text-amber-800 border-t border-amber-200">
-                      <span className="font-bold">Destination:</span> {viewingParchiOrder.address}
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-center pt-2 text-[10px] text-amber-600">
-                  ★ Paper Slip • Registered {viewingParchiOrder.created} ★
-                </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 italic">No paper slips attached yet.</p>
+                )}
               </div>
-            )}
 
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                onClick={() => setViewingParchiOrder(null)}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
-              >
-                Close Slip
-              </button>
-            </div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" /> Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {/* MULTI-SLIP PARCHI VIEWER MODAL */}
+      {viewingParchiOrder && (() => {
+        const slips = (viewingParchiOrder.receiptPhotos && viewingParchiOrder.receiptPhotos.length > 0)
+          ? viewingParchiOrder.receiptPhotos
+          : (viewingParchiOrder.receiptPhoto ? [viewingParchiOrder.receiptPhoto] : []);
+        const currentSlip = slips[activeSlipIndex] || slips[0];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 animate-in fade-in">
+            <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                    {viewingParchiOrder.orderCode}
+                  </span>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Paper Parchi Slip {slips.length > 1 ? `(${activeSlipIndex + 1} of ${slips.length})` : ""}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setViewingParchiOrder(null)}
+                  className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Main Photo View */}
+              {currentSlip && currentSlip.startsWith("data:image") ? (
+                <div className="space-y-3">
+                  <div className="relative p-2 bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center min-h-[300px]">
+                    <img
+                      src={currentSlip}
+                      alt={`Parchi ${viewingParchiOrder.orderCode}`}
+                      className="max-h-[55vh] w-full object-contain rounded-xl"
+                    />
+
+                    {/* Navigation Arrows if Multiple Slips */}
+                    {slips.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSlipIndex((prev) => (prev > 0 ? prev - 1 : slips.length - 1))}
+                          className="absolute left-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full shadow-lg transition-all cursor-pointer"
+                          title="Previous Slip"
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSlipIndex((prev) => (prev < slips.length - 1 ? prev + 1 : 0))}
+                          className="absolute right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full shadow-lg transition-all cursor-pointer"
+                          title="Next Slip"
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Thumbnail Row if Multiple Slips */}
+                  {slips.length > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      {slips.map((s, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActiveSlipIndex(idx)}
+                          className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${
+                            activeSlipIndex === idx
+                              ? "border-blue-600 scale-105 shadow-md"
+                              : "border-slate-200 opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          <img src={s} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Paper Slip Graphic fallback */
+                <div className="p-5 bg-amber-50/70 border border-amber-200 rounded-2xl font-mono text-xs text-amber-950 space-y-3 shadow-inner">
+                  <div className="text-center border-b border-amber-200/80 pb-2">
+                    <div className="font-bold text-sm tracking-wider uppercase">Order Parchi Slip</div>
+                    <div className="text-[11px] text-amber-800">{viewingParchiOrder.customerName}</div>
+                    <div className="text-[10px] text-amber-700">{viewingParchiOrder.phone}</div>
+                  </div>
+
+                  <div className="space-y-1.5 py-1">
+                    <div className="flex justify-between font-bold text-slate-800">
+                      <span>Items Count:</span>
+                      <span>{viewingParchiOrder.itemsCount} units</span>
+                    </div>
+                    {viewingParchiOrder.itemsDescription && (
+                      <div className="bg-white/80 p-2.5 rounded-lg border border-amber-200/60 text-slate-700 whitespace-pre-wrap">
+                        {viewingParchiOrder.itemsDescription}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-center pt-2 text-[10px] text-amber-600">
+                    📋 Paper Slip • Registered {viewingParchiOrder.created} •
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <span className="text-xs text-slate-500 font-mono">
+                  {viewingParchiOrder.customerName} • {viewingParchiOrder.phone}
+                </span>
+                <button
+                  onClick={() => setViewingParchiOrder(null)}
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Close Slip
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* FULL ORDER DETAILS DRAWER / MODAL */}
       {selectedOrder && (
@@ -902,6 +1435,20 @@ export default function OrdersPage() {
                 </button>
 
                 <div className="flex items-center gap-2">
+                  {/* Edit Order in Drawer if before transit */}
+                  {isEditableBeforeTransit(selectedOrder.status) && (
+                    <button
+                      onClick={() => {
+                        const o = selectedOrder;
+                        setSelectedOrder(null);
+                        handleOpenEditModal(o);
+                      }}
+                      className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" /> Edit Order
+                    </button>
+                  )}
+
                   {selectedOrder.status !== "Delivered" && (
                     <button
                       onClick={() => advanceOrderStatus(selectedOrder)}

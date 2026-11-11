@@ -23,6 +23,13 @@ import {
   Upload,
   Image as ImageIcon,
   Radio,
+  Search,
+  Calendar,
+  Filter,
+  ArrowUpDown,
+  Edit3,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -36,8 +43,12 @@ import {
   registerOrderInStore,
   canEmployeeBroadcastOrders,
   updateOrderStatusInStore,
+  deleteOrderInStore,
+  editOrderInStore,
   subscribeToCRMStore,
   sortOrdersNewestFirst,
+  getOrderTimestamp,
+  getOrderDateString,
   OrderItem,
   EmployeeItem,
 } from "@/lib/store";
@@ -56,9 +67,32 @@ export default function EmployeeOrdersPage() {
   const [canBroadcast, setCanBroadcast] = useState(true);
   const [claimedId, setClaimedId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [viewingParchi, setViewingParchi] = useState<OrderItem | null>(null);
 
-  // Broadcast Modal State
+  // Filters & Sorting States
+  const [searchFilter, setSearchFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState<"ALL" | "TODAY" | "YESTERDAY" | "LAST_7" | "THIS_MONTH" | "CUSTOM">("ALL");
+  const [customDate, setCustomDate] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("Any");
+  const [sortBy, setSortBy] = useState<"NEWEST" | "OLDEST" | "PRIORITY" | "ITEMS_DESC" | "CUSTOMER_ASC">("NEWEST");
+
+  // Parchi Viewer Modal State
+  const [viewingParchi, setViewingParchi] = useState<OrderItem | null>(null);
+  const [activeSlipIndex, setActiveSlipIndex] = useState(0);
+
+  // Edit Order Modal State (Before Transit)
+  const [editingOrder, setEditingOrder] = useState<OrderItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    customerName: "",
+    customerPhone: "",
+    address: "",
+    itemCount: "1",
+    itemsDescription: "",
+    priority: "Normal" as "Normal" | "High" | "Urgent",
+    notes: "",
+    fileDataUrls: [] as string[],
+  });
+
+  // Broadcast Modal State (Multiple Slips Supported)
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const [newOrder, setNewOrder] = useState({
     customerName: "",
@@ -70,8 +104,7 @@ export default function EmployeeOrdersPage() {
     target: "POOL" as "POOL" | "SELF" | "COLLEAGUE",
     colleagueCode: "",
     notes: "",
-    fileName: "",
-    fileDataUrl: "",
+    fileDataUrls: [] as string[],
   });
 
   // Sync with reactive store across all tabs and windows
@@ -93,32 +126,133 @@ export default function EmployeeOrdersPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const handleClearFilters = () => {
+    setSearchFilter("");
+    setDateFilter("ALL");
+    setCustomDate("");
+    setPriorityFilter("Any");
+    setSortBy("NEWEST");
+  };
+
+  const isEditableBeforeTransit = (status: OrderItem["status"]) => {
+    return status !== "Ready" && status !== "Delivered" && status !== "Cancelled";
+  };
+
+  // Helper date strings
+  const todayStr = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  })();
+
+  const yesterdayStr = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  })();
+
+  const currentMonthPrefix = todayStr.slice(0, 7);
+
+  // Filter & Sort Pipeline
+  const applyFiltersAndSort = (list: OrderItem[]): OrderItem[] => {
+    const deletedSet = getDeletedOrderIds();
+    const filtered = list.filter((ord) => {
+      if (ord.isDeleted || deletedSet.has(ord.id)) return false;
+
+      // Priority Filter
+      if (priorityFilter !== "Any" && (ord.priority || "Normal") !== priorityFilter) {
+        return false;
+      }
+
+      // Date Filter
+      if (dateFilter !== "ALL") {
+        const ordDate = getOrderDateString(ord);
+        const ordTs = getOrderTimestamp(ord);
+
+        if (dateFilter === "TODAY") {
+          if (ordDate !== todayStr) return false;
+        } else if (dateFilter === "YESTERDAY") {
+          if (ordDate !== yesterdayStr) return false;
+        } else if (dateFilter === "LAST_7") {
+          const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+          if (ordTs < sevenDaysAgo) return false;
+        } else if (dateFilter === "THIS_MONTH") {
+          if (!ordDate.startsWith(currentMonthPrefix)) return false;
+        } else if (dateFilter === "CUSTOM") {
+          if (customDate && ordDate !== customDate) return false;
+        }
+      }
+
+      // Search Filter
+      if (searchFilter) {
+        const q = searchFilter.toLowerCase().trim();
+        const match =
+          (ord.orderCode || "").toLowerCase().includes(q) ||
+          (ord.customerName || "").toLowerCase().includes(q) ||
+          (ord.phone || "").toLowerCase().includes(q) ||
+          (ord.itemsDescription || "").toLowerCase().includes(q) ||
+          (ord.notes || "").toLowerCase().includes(q) ||
+          (ord.claimedBy || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+
+      return true;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "NEWEST" || sortBy === "OLDEST") {
+        const timeA = getOrderTimestamp(a);
+        const timeB = getOrderTimestamp(b);
+        if (timeB !== timeA) {
+          return sortBy === "NEWEST" ? timeB - timeA : timeA - timeB;
+        }
+        const codeA = parseInt(String(a.orderCode || "").replace(/\D/g, "") || "0", 10);
+        const codeB = parseInt(String(b.orderCode || "").replace(/\D/g, "") || "0", 10);
+        return sortBy === "NEWEST" ? codeB - codeA : codeA - codeB;
+      }
+      if (sortBy === "CUSTOMER_ASC") {
+        return (a.customerName || "").localeCompare(b.customerName || "");
+      }
+      if (sortBy === "PRIORITY") {
+        const weight: Record<string, number> = { Urgent: 3, High: 2, Normal: 1 };
+        return (weight[b.priority || "Normal"] || 1) - (weight[a.priority || "Normal"] || 1);
+      }
+      if (sortBy === "ITEMS_DESC") {
+        return (b.itemsCount || 1) - (a.itemsCount || 1);
+      }
+      return 0;
+    });
+  };
+
   const deletedSet = getDeletedOrderIds();
-  const poolOrders = sortOrdersNewestFirst(
-    orders.filter((o) => o.status === "Broadcasted" && !o.isDeleted && !deletedSet.has(o.id))
-  );
-  const myOrders = sortOrdersNewestFirst(
-    orders.filter((o) => {
-      if (o.status === "Broadcasted" || o.status === "Draft" || o.status === "Cancelled" || o.isDeleted || deletedSet.has(o.id)) return false;
-      const nameMatch =
-        (o.claimedBy && (
-          o.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
-          o.claimedBy.toLowerCase().includes(employeeName.toLowerCase()) ||
-          employeeName.toLowerCase().includes(o.claimedBy.toLowerCase())
-        )) ||
-        (o.assignedToName && (
-          o.assignedToName.toLowerCase() === employeeName.toLowerCase() ||
-          o.assignedToName.toLowerCase().includes(employeeName.toLowerCase()) ||
-          employeeName.toLowerCase().includes(o.assignedToName.toLowerCase())
-        )) ||
-        (user?.employee_id && o.assignedToCode === user.employee_id) ||
-        (user?.employee_id && o.claimedBy?.toLowerCase() === user.employee_id.toLowerCase());
-      return Boolean(nameMatch);
-    })
-  );
-  const allOrders = sortOrdersNewestFirst(
-    orders.filter((o) => o.status !== "Cancelled" && o.status !== "Draft" && !o.isDeleted && !deletedSet.has(o.id))
-  );
+  const rawPoolOrders = orders.filter((o) => o.status === "Broadcasted" && !o.isDeleted && !deletedSet.has(o.id));
+  const rawMyOrders = orders.filter((o) => {
+    if (o.status === "Broadcasted" || o.status === "Draft" || o.status === "Cancelled" || o.isDeleted || deletedSet.has(o.id)) return false;
+    const nameMatch =
+      (o.claimedBy && (
+        o.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
+        o.claimedBy.toLowerCase().includes(employeeName.toLowerCase()) ||
+        employeeName.toLowerCase().includes(o.claimedBy.toLowerCase())
+      )) ||
+      (o.assignedToName && (
+        o.assignedToName.toLowerCase() === employeeName.toLowerCase() ||
+        o.assignedToName.toLowerCase().includes(employeeName.toLowerCase()) ||
+        employeeName.toLowerCase().includes(o.assignedToName.toLowerCase())
+      )) ||
+      (user?.employee_id && o.assignedToCode === user.employee_id) ||
+      (user?.employee_id && o.claimedBy?.toLowerCase() === user.employee_id.toLowerCase());
+    return Boolean(nameMatch);
+  });
+  const rawAllOrders = orders.filter((o) => o.status !== "Cancelled" && o.status !== "Draft" && !o.isDeleted && !deletedSet.has(o.id));
+
+  const poolOrders = applyFiltersAndSort(rawPoolOrders);
+  const myOrders = applyFiltersAndSort(rawMyOrders);
+  const allOrders = applyFiltersAndSort(rawAllOrders);
 
   const handleClaim = (order: OrderItem) => {
     claimOrderInStore(order.id, employeeName);
@@ -147,6 +281,61 @@ export default function EmployeeOrdersPage() {
         ? `ऑर्डर ${order.orderCode} स्थिति: ${nextStatus}`
         : `Order ${order.orderCode} status updated to: ${nextStatus}`
     );
+  };
+
+  const handleOpenEditModal = (order: OrderItem) => {
+    if (order.status === "Ready" || order.status === "Delivered") {
+      alert("This order is already in transit / delivered and cannot be modified.");
+      return;
+    }
+
+    const initialSlips = (order.receiptPhotos && order.receiptPhotos.length > 0)
+      ? [...order.receiptPhotos]
+      : (order.receiptPhoto ? [order.receiptPhoto] : []);
+
+    setEditingOrder(order);
+    setEditForm({
+      customerName: order.customerName || "",
+      customerPhone: order.phone === "—" ? "" : (order.phone || ""),
+      address: order.address === "Local Shop Delivery" ? "" : (order.address || ""),
+      itemCount: String(order.itemsCount || 1),
+      itemsDescription: order.itemsDescription || "",
+      priority: order.priority || "Normal",
+      notes: order.notes || "",
+      fileDataUrls: initialSlips,
+    });
+  };
+
+  const handleSaveEditOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+    if (!editForm.customerName.trim()) {
+      alert(lang === "hi" ? "कृपया ग्राहक का नाम दर्ज करें!" : "Customer Name is required!");
+      return;
+    }
+
+    const success = editOrderInStore(editingOrder.id, {
+      customerName: editForm.customerName.trim(),
+      phone: editForm.customerPhone.trim() || "—",
+      address: editForm.address.trim() || "Local Shop Delivery",
+      itemsCount: Number(editForm.itemCount) || 1,
+      itemsDescription: editForm.itemsDescription.trim() || `${editForm.itemCount || 1} items parcel`,
+      priority: editForm.priority,
+      notes: editForm.notes.trim() || undefined,
+      receiptPhoto: editForm.fileDataUrls[0] || undefined,
+      receiptPhotos: editForm.fileDataUrls,
+    });
+
+    if (success) {
+      showToast(
+        lang === "hi"
+          ? `✓ ऑर्डर ${editingOrder.orderCode} सफलतापूर्वक अपडेट हुआ!`
+          : `✓ Order ${editingOrder.orderCode} updated successfully!`
+      );
+      setEditingOrder(null);
+    } else {
+      alert("Could not update order. Status may already be in transit or delivered.");
+    }
   };
 
   const handleCreateOrder = (e: React.FormEvent) => {
@@ -180,7 +369,8 @@ export default function EmployeeOrdersPage() {
       itemsCount: Number(newOrder.itemCount) || 1,
       itemsDescription: newOrder.itemsDescription.trim() || `${newOrder.itemCount || 1} items parcel`,
       priority: newOrder.priority,
-      receiptPhoto: newOrder.fileDataUrl || (newOrder.fileName ? "uploaded_parchi.jpg" : undefined),
+      receiptPhoto: newOrder.fileDataUrls[0] || undefined,
+      receiptPhotos: newOrder.fileDataUrls.length > 0 ? newOrder.fileDataUrls : undefined,
       status: isDirect ? "Claimed" : "Broadcasted",
       notes: newOrder.notes.trim() || undefined,
       broadcastTarget: isDirect ? "SPECIFIC" : "ALL",
@@ -225,8 +415,7 @@ export default function EmployeeOrdersPage() {
       target: "POOL",
       colleagueCode: "",
       notes: "",
-      fileName: "",
-      fileDataUrl: "",
+      fileDataUrls: [],
     });
   };
 
@@ -252,8 +441,8 @@ export default function EmployeeOrdersPage() {
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               {lang === "hi"
-                ? "लाइव दुकान ऑर्डर पूल और सक्रिय असाइनमेंट"
-                : "Real-time shop order pool & active assignments"}
+                ? "लाइव दुकान ऑर्डर पूल, तारीख अनुसार फिल्टर और मल्टीपल पर्ची सपोर्ट"
+                : "Real-time order pool, date-wise filtering & multi-slip support"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -278,8 +467,8 @@ export default function EmployeeOrdersPage() {
             </h3>
             <p className="text-[11px] text-slate-600">
               {lang === "hi"
-                ? "क्या ग्राहक का नया ऑर्डर आया है? यहां से सीधे पूल में ब्रॉडकास्ट करें।"
-                : "Got a new customer order? Register and broadcast to pool or yourself."}
+                ? "नया ग्राहक ऑर्डर आया है? यहां से एक या अधिक पर्चियां अपलोड करके ब्रॉडकास्ट करें।"
+                : "Got a new customer order? Upload one or multiple slips & broadcast instantly."}
             </p>
           </div>
         </div>
@@ -337,6 +526,74 @@ export default function EmployeeOrdersPage() {
         </button>
       </div>
 
+      {/* Comprehensive Filtering & Sorting Bar for Staff */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-3 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
+          {/* Search Box */}
+          <div className="sm:col-span-4 relative">
+            <input
+              type="text"
+              placeholder={lang === "hi" ? "ऑर्डर कोड, ग्राहक नाम, फ़ोन नंबर खोजें..." : "Search code, customer, phone..."}
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+          </div>
+
+          {/* Date Filter */}
+          <div className="sm:col-span-4 flex gap-1.5">
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as any)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium cursor-pointer"
+            >
+              <option value="ALL">{lang === "hi" ? "📅 सभी तारीखें" : "📅 All Dates"}</option>
+              <option value="TODAY">{lang === "hi" ? "आज (Today)" : "Today"}</option>
+              <option value="YESTERDAY">{lang === "hi" ? "कल (Yesterday)" : "Yesterday"}</option>
+              <option value="LAST_7">{lang === "hi" ? "पिछले 7 दिन" : "Last 7 Days"}</option>
+              <option value="THIS_MONTH">{lang === "hi" ? "इस महीने" : "This Month"}</option>
+              <option value="CUSTOM">{lang === "hi" ? "तारीख चुनें..." : "Pick Date..."}</option>
+            </select>
+
+            {dateFilter === "CUSTOM" && (
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs text-slate-800 focus:bg-white font-mono cursor-pointer"
+              />
+            )}
+          </div>
+
+          {/* Sort By */}
+          <div className="sm:col-span-3">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium cursor-pointer"
+            >
+              <option value="NEWEST">🕒 {lang === "hi" ? "नया पहले (Newest)" : "Newest First"}</option>
+              <option value="OLDEST">🕒 {lang === "hi" ? "पुराना पहले (Oldest)" : "Oldest First"}</option>
+              <option value="PRIORITY">⚡ {lang === "hi" ? "तत्काल पहले (Urgent)" : "Urgent First"}</option>
+              <option value="ITEMS_DESC">📦 {lang === "hi" ? "सामान अधिक से कम" : "Items: High-Low"}</option>
+              <option value="CUSTOMER_ASC">👤 {lang === "hi" ? "ग्राहक A से Z" : "Customer (A-Z)"}</option>
+            </select>
+          </div>
+
+          {/* Clear Button */}
+          <div className="sm:col-span-1">
+            <button
+              onClick={handleClearFilters}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold text-center cursor-pointer transition-colors"
+            >
+              {lang === "hi" ? "रीसेट" : "Clear"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab 1: Available Pool */}
       {tab === "pool" && (
         <div className="space-y-3">
           {poolOrders.length === 0 ? (
@@ -352,100 +609,124 @@ export default function EmployeeOrdersPage() {
               </p>
             </div>
           ) : (
-            poolOrders.map((order) => (
-              <motion.div
-                key={order.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                        {order.orderCode}
-                      </span>
-                      {order.priority && order.priority !== "Normal" && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
-                          {order.priority}
+            poolOrders.map((order) => {
+              const slips = (order.receiptPhotos && order.receiptPhotos.length > 0)
+                ? order.receiptPhotos
+                : (order.receiptPhoto ? [order.receiptPhoto] : []);
+
+              return (
+                <motion.div
+                  key={order.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                          {order.orderCode}
                         </span>
-                      )}
-                      {(order.createdByName?.toLowerCase() === employeeName.toLowerCase() ||
-                        order.createdByRole === "EMPLOYEE") && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          ✓ {lang === "hi" ? "आपने ब्रॉडकास्ट किया" : "Broadcasted by You"}
-                        </span>
-                      )}
+                        {order.priority && order.priority !== "Normal" && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                            {order.priority}
+                          </span>
+                        )}
+                        {(order.createdByName?.toLowerCase() === employeeName.toLowerCase() ||
+                          order.createdByRole === "EMPLOYEE") && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            ✓ {lang === "hi" ? "आपने ब्रॉडकास्ट किया" : "Broadcasted by You"}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-sm mt-1">{order.customerName}</h3>
                     </div>
-                    <h3 className="font-bold text-slate-900 text-sm mt-1">{order.customerName}</h3>
-                  </div>
-                  <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                    {order.itemsCount} {order.itemsCount === 1 ? (lang === "hi" ? "आइटम" : "Item") : (lang === "hi" ? "आइटम" : "Items")}
-                  </span>
-                </div>
-
-                {order.itemsDescription && (
-                  <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <strong>{lang === "hi" ? "सामान सूची:" : "Items:"}</strong> {order.itemsDescription}
-                  </p>
-                )}
-
-                <div className="space-y-1 text-xs text-slate-600">
-                  {order.address && (
-                    <div className="flex items-center gap-1.5 text-slate-600">
-                      <MapPin size={13} className="text-slate-400 shrink-0" />
-                      <span className="truncate">{order.address}</span>
-                    </div>
-                  )}
-                  {order.phone && order.phone !== "—" && (
-                    <div className="flex items-center gap-1.5 text-slate-600">
-                      <Phone size={13} className="text-slate-400 shrink-0" />
-                      <a href={`tel:${order.phone}`} className="text-blue-600 font-medium hover:underline">
-                        {order.phone}
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                {order.notes && (
-                  <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                    <strong>{lang === "hi" ? "विशेष निर्देश:" : "Note:"}</strong> {order.notes}
-                  </p>
-                )}
-
-                <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                  {order.receiptPhoto && (
-                    <button
-                      onClick={() => setViewingParchi(order)}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5"
-                    >
-                      <FileText size={13} />
-                      <span>{lang === "hi" ? "पर्ची" : "Slip"}</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleClaim(order)}
-                    disabled={claimedId === order.id}
-                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                  >
-                    <Package size={14} />
-                    <span>
-                      {claimedId === order.id
-                        ? lang === "hi"
-                          ? "असाइन हो रहा है..."
-                          : "Claiming..."
-                        : lang === "hi"
-                        ? "यह ऑर्डर क्लेम करें"
-                        : "Claim This Order"}
+                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                      {order.itemsCount} {order.itemsCount === 1 ? (lang === "hi" ? "आइटम" : "Item") : (lang === "hi" ? "आइटम" : "Items")}
                     </span>
-                  </button>
-                </div>
-              </motion.div>
-            ))
+                  </div>
+
+                  {order.itemsDescription && (
+                    <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <strong>{lang === "hi" ? "सामान सूची:" : "Items:"}</strong> {order.itemsDescription}
+                    </p>
+                  )}
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    {order.address && (
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <MapPin size={13} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{order.address}</span>
+                      </div>
+                    )}
+                    {order.phone && order.phone !== "—" && (
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <Phone size={13} className="text-slate-400 shrink-0" />
+                        <a href={`tel:${order.phone}`} className="text-blue-600 font-medium hover:underline">
+                          {order.phone}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {order.notes && (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      <strong>{lang === "hi" ? "विशेष निर्देश:" : "Note:"}</strong> {order.notes}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                    {/* View Slips */}
+                    {slips.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setViewingParchi(order);
+                          setActiveSlipIndex(0);
+                        }}
+                        className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <FileText size={13} className="text-amber-600" />
+                        <span>{lang === "hi" ? "पर्ची" : "Slip"} {slips.length > 1 ? `(${slips.length})` : ""}</span>
+                      </button>
+                    )}
+
+                    {/* Edit Order before transit */}
+                    {isEditableBeforeTransit(order.status) && (
+                      <button
+                        onClick={() => handleOpenEditModal(order)}
+                        className="px-3 py-2 bg-slate-100 hover:bg-amber-100 text-amber-800 border border-slate-200 hover:border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Edit Order"
+                      >
+                        <Edit3 size={13} />
+                        <span>{lang === "hi" ? "बदलाव करें" : "Edit"}</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleClaim(order)}
+                      disabled={claimedId === order.id}
+                      className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <Package size={14} />
+                      <span>
+                        {claimedId === order.id
+                          ? lang === "hi"
+                            ? "असाइन हो रहा है..."
+                            : "Claiming..."
+                          : lang === "hi"
+                          ? "यह ऑर्डर क्लेम करें"
+                          : "Claim This Order"}
+                      </span>
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })
           )}
         </div>
       )}
 
+      {/* Tab 2: My Orders */}
       {tab === "my" && (
         <div className="space-y-3">
           {myOrders.length === 0 ? (
@@ -461,138 +742,168 @@ export default function EmployeeOrdersPage() {
               </p>
             </div>
           ) : (
-            myOrders.map((order) => (
-              <motion.div
-                key={order.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                      {order.orderCode}
+            myOrders.map((order) => {
+              const slips = (order.receiptPhotos && order.receiptPhotos.length > 0)
+                ? order.receiptPhotos
+                : (order.receiptPhoto ? [order.receiptPhoto] : []);
+
+              return (
+                <motion.div
+                  key={order.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                          {order.orderCode}
+                        </span>
+                        {order.priority && order.priority !== "Normal" && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                            {order.priority}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-sm mt-1">{order.customerName}</h3>
+                    </div>
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
+                        order.status === "Delivered"
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          : order.status === "Ready"
+                          ? "bg-purple-100 text-purple-800 border-purple-300"
+                          : order.status === "Packed"
+                          ? "bg-cyan-100 text-cyan-800 border-cyan-300"
+                          : order.status === "Packing"
+                          ? "bg-indigo-100 text-indigo-800 border-indigo-300"
+                          : "bg-blue-100 text-blue-800 border-blue-300"
+                      }`}
+                    >
+                      {order.status}
                     </span>
-                    <h3 className="font-bold text-slate-900 text-sm mt-1">{order.customerName}</h3>
                   </div>
-                  <span
-                    className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
-                      order.status === "Delivered"
-                        ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                        : order.status === "Ready"
-                        ? "bg-purple-100 text-purple-800 border-purple-300"
-                        : order.status === "Packed"
-                        ? "bg-cyan-100 text-cyan-800 border-cyan-300"
-                        : order.status === "Packing"
-                        ? "bg-indigo-100 text-indigo-800 border-indigo-300"
-                        : "bg-blue-100 text-blue-800 border-blue-300"
-                    }`}
-                  >
-                    {order.status}
-                  </span>
-                </div>
 
-                {order.itemsDescription && (
-                  <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <strong>{lang === "hi" ? "सामान:" : "Items"} ({order.itemsCount}):</strong> {order.itemsDescription}
-                  </p>
-                )}
+                  {order.itemsDescription && (
+                    <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <strong>{lang === "hi" ? "सामान:" : "Items"} ({order.itemsCount}):</strong> {order.itemsDescription}
+                    </p>
+                  )}
 
-                <div className="space-y-1 text-xs text-slate-600">
-                  {order.address && (
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={13} className="text-slate-400 shrink-0" />
-                      <span className="truncate">{order.address}</span>
+                  <div className="space-y-1 text-xs text-slate-600">
+                    {order.address && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin size={13} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{order.address}</span>
+                      </div>
+                    )}
+                    {order.phone && order.phone !== "—" && (
+                      <div className="flex items-center gap-1.5">
+                        <Phone size={13} className="text-slate-400 shrink-0" />
+                        <a href={`tel:${order.phone}`} className="text-blue-600 font-semibold hover:underline">
+                          Call {order.phone}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Slip Viewer Button */}
+                    {slips.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewingParchi(order);
+                          setActiveSlipIndex(0);
+                        }}
+                        className="flex-1 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <FileText size={13} />
+                        <span>{lang === "hi" ? "पर्ची देखें" : "View Slips"} {slips.length > 1 ? `(${slips.length})` : ""}</span>
+                      </button>
+                    )}
+
+                    {/* Edit Order before transit */}
+                    {isEditableBeforeTransit(order.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(order)}
+                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Edit3 size={13} />
+                        <span>{lang === "hi" ? "संपादित करें" : "Edit"}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status Stepper Tracker */}
+                  <div className="grid grid-cols-4 gap-1 pt-2 border-t border-slate-100 text-[10px] text-center font-bold">
+                    <span
+                      className={`p-1 rounded ${
+                        order.status === "Claimed"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      1. {lang === "hi" ? "स्वीकृत" : "Claimed"}
+                    </span>
+                    <span
+                      className={`p-1 rounded ${
+                        order.status === "Packing"
+                          ? "bg-indigo-600 text-white"
+                          : ["Packed", "Ready", "Delivered"].includes(order.status)
+                          ? "bg-slate-100 text-slate-700"
+                          : "bg-slate-50 text-slate-400"
+                      }`}
+                    >
+                      2. {lang === "hi" ? "पैकिंग" : "Packing"}
+                    </span>
+                    <span
+                      className={`p-1 rounded ${
+                        ["Packed", "Ready"].includes(order.status)
+                          ? "bg-purple-600 text-white"
+                          : order.status === "Delivered"
+                          ? "bg-slate-100 text-slate-700"
+                          : "bg-slate-50 text-slate-400"
+                      }`}
+                    >
+                      3. {lang === "hi" ? "तैयार" : "Ready"}
+                    </span>
+                    <span
+                      className={`p-1 rounded ${
+                        order.status === "Delivered"
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-50 text-slate-400"
+                      }`}
+                    >
+                      4. {lang === "hi" ? "डिलीवर" : "Delivered"}
+                    </span>
+                  </div>
+
+                  {/* Stepper Action Button */}
+                  {order.status !== "Delivered" ? (
+                    <button
+                      onClick={() => advanceStatus(order)}
+                      className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <ArrowRight size={14} />
+                      <span>
+                        {order.status === "Claimed" && (lang === "hi" ? "पैकिंग शुरू करें" : "Start Packing")}
+                        {order.status === "Packing" && (lang === "hi" ? "पैकिंग पूरी मार्क करें" : "Mark Packed")}
+                        {order.status === "Packed" && (lang === "hi" ? "डिस्पैच हेतु तैयार मार्क करें" : "Mark Ready for Dispatch")}
+                        {order.status === "Ready" && (lang === "hi" ? "ग्राहक को सुपुर्द (डिलीवर)" : "Confirm Customer Handover (Delivered)")}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5">
+                      <CheckCircle size={15} className="text-emerald-600" />
+                      <span>{lang === "hi" ? "सफलतापूर्वक डिलीवर हुआ" : "Delivered Successfully"}</span>
                     </div>
                   )}
-                  {order.phone && order.phone !== "—" && (
-                    <div className="flex items-center gap-1.5">
-                      <Phone size={13} className="text-slate-400 shrink-0" />
-                      <a href={`tel:${order.phone}`} className="text-blue-600 font-semibold hover:underline">
-                        Call {order.phone}
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                {/* Slip Viewer Button in My Orders */}
-                {order.receiptPhoto && (
-                  <button
-                    type="button"
-                    onClick={() => setViewingParchi(order)}
-                    className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <FileText size={13} />
-                    <span>{lang === "hi" ? "दुकान पर्ची / फोटो देखें" : "View Parchi / Photo Slip"}</span>
-                  </button>
-                )}
-
-                {/* Status Stepper Tracker */}
-                <div className="grid grid-cols-4 gap-1 pt-2 border-t border-slate-100 text-[10px] text-center font-bold">
-                  <span
-                    className={`p-1 rounded ${
-                      order.status === "Claimed"
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-100 text-slate-700"
-                    }`}
-                  >
-                    1. {lang === "hi" ? "स्वीकृत" : "Claimed"}
-                  </span>
-                  <span
-                    className={`p-1 rounded ${
-                      order.status === "Packing"
-                        ? "bg-indigo-600 text-white"
-                        : ["Packed", "Ready", "Delivered"].includes(order.status)
-                        ? "bg-slate-100 text-slate-700"
-                        : "bg-slate-50 text-slate-400"
-                    }`}
-                  >
-                    2. {lang === "hi" ? "पैकिंग" : "Packing"}
-                  </span>
-                  <span
-                    className={`p-1 rounded ${
-                      ["Packed", "Ready"].includes(order.status)
-                        ? "bg-purple-600 text-white"
-                        : order.status === "Delivered"
-                        ? "bg-slate-100 text-slate-700"
-                        : "bg-slate-50 text-slate-400"
-                    }`}
-                  >
-                    3. {lang === "hi" ? "तैयार" : "Ready"}
-                  </span>
-                  <span
-                    className={`p-1 rounded ${
-                      order.status === "Delivered"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-50 text-slate-400"
-                    }`}
-                  >
-                    4. {lang === "hi" ? "डिलीवर" : "Delivered"}
-                  </span>
-                </div>
-
-                {/* Stepper Action Button */}
-                {order.status !== "Delivered" ? (
-                  <button
-                    onClick={() => advanceStatus(order)}
-                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                  >
-                    <ArrowRight size={14} />
-                    <span>
-                      {order.status === "Claimed" && (lang === "hi" ? "पैकिंग शुरू करें" : "Start Packing")}
-                      {order.status === "Packing" && (lang === "hi" ? "पैकिंग पूरी मार्क करें" : "Mark Packed")}
-                      {order.status === "Packed" && (lang === "hi" ? "डिस्पैच हेतु तैयार मार्क करें" : "Mark Ready for Dispatch")}
-                      {order.status === "Ready" && (lang === "hi" ? "ग्राहक को सुपुर्द (डिलीवर)" : "Confirm Customer Handover (Delivered)")}
-                    </span>
-                  </button>
-                ) : (
-                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5">
-                    <CheckCircle size={15} className="text-emerald-600" />
-                    <span>{lang === "hi" ? "सफलतापूर्वक डिलीवर हुआ" : "Delivered Successfully"}</span>
-                  </div>
-                )}
-              </motion.div>
-            ))
+                </motion.div>
+              );
+            })
           )}
         </div>
       )}
@@ -614,6 +925,10 @@ export default function EmployeeOrdersPage() {
             </div>
           ) : (
             allOrders.map((order) => {
+              const slips = (order.receiptPhotos && order.receiptPhotos.length > 0)
+                ? order.receiptPhotos
+                : (order.receiptPhoto ? [order.receiptPhoto] : []);
+
               const isMine =
                 (order.claimedBy && (
                   order.claimedBy.toLowerCase() === employeeName.toLowerCase() ||
@@ -706,14 +1021,29 @@ export default function EmployeeOrdersPage() {
                   </div>
 
                   <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                    {order.receiptPhoto && (
+                    {slips.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => setViewingParchi(order)}
-                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                        onClick={() => {
+                          setViewingParchi(order);
+                          setActiveSlipIndex(0);
+                        }}
+                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                       >
                         <FileText size={13} />
-                        <span>{lang === "hi" ? "पर्ची" : "Slip"}</span>
+                        <span>{lang === "hi" ? "पर्ची" : "Slip"} {slips.length > 1 ? `(${slips.length})` : ""}</span>
+                      </button>
+                    )}
+
+                    {isEditableBeforeTransit(order.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(order)}
+                        className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                        title="Edit Order"
+                      >
+                        <Edit3 size={13} />
+                        <span>{lang === "hi" ? "बदलाव" : "Edit"}</span>
                       </button>
                     )}
 
@@ -753,59 +1083,325 @@ export default function EmployeeOrdersPage() {
         </div>
       )}
 
-      {/* Parchi Preview Modal */}
-      {viewingParchi && (
+      {/* MULTI-SLIP PARCHI PREVIEW MODAL */}
+      {viewingParchi && (() => {
+        const slips = (viewingParchi.receiptPhotos && viewingParchi.receiptPhotos.length > 0)
+          ? viewingParchi.receiptPhotos
+          : (viewingParchi.receiptPhoto ? [viewingParchi.receiptPhoto] : []);
+        const currentSlip = slips[activeSlipIndex] || slips[0];
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded">
+                    {viewingParchi.orderCode}
+                  </span>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    {lang === "hi" ? "ऑर्डर पर्ची" : "Order Slip"} {slips.length > 1 ? `(${activeSlipIndex + 1} of ${slips.length})` : ""}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setViewingParchi(null)}
+                  className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Main Photo View */}
+              {currentSlip && currentSlip.startsWith("data:image") ? (
+                <div className="space-y-3">
+                  <div className="relative p-2 bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center min-h-[280px]">
+                    <img
+                      src={currentSlip}
+                      alt={`Parchi ${viewingParchi.orderCode}`}
+                      className="max-h-[55vh] w-full object-contain rounded-xl"
+                    />
+
+                    {slips.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSlipIndex((prev) => (prev > 0 ? prev - 1 : slips.length - 1))}
+                          className="absolute left-2.5 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full shadow-lg cursor-pointer"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSlipIndex((prev) => (prev < slips.length - 1 ? prev + 1 : 0))}
+                          className="absolute right-2.5 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full shadow-lg cursor-pointer"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {slips.length > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      {slips.map((s, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActiveSlipIndex(idx)}
+                          className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${
+                            activeSlipIndex === idx
+                              ? "border-blue-600 scale-105 shadow-md"
+                              : "border-slate-200 opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          <img src={s} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs text-slate-600 font-mono">
+                    <span>{viewingParchi.customerName}</span>
+                    <span>{viewingParchi.itemsCount} {lang === "hi" ? "सामान" : "Items"}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 text-center text-xs text-amber-950 font-mono space-y-2 shadow-inner">
+                  <FileText size={36} className="mx-auto text-amber-600" />
+                  <p className="font-bold text-sm text-slate-900">{viewingParchi.orderCode} - Counter Slip</p>
+                  <p className="text-slate-700">{viewingParchi.itemsDescription || `${viewingParchi.itemsCount} items`}</p>
+                  <p className="text-[10px] text-amber-700">Customer: {viewingParchi.customerName} • {viewingParchi.phone}</p>
+                </div>
+              )}
+
+              <button
+                onClick={() => setViewingParchi(null)}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                {lang === "hi" ? "बंद करें" : "Close Slip"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* EDIT ORDER MODAL FOR EMPLOYEE (BEFORE TRANSIT) */}
+      {editingOrder && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded">
-                  {viewingParchi.orderCode}
-                </span>
-                <h3 className="font-bold text-sm text-slate-900">
-                  {lang === "hi" ? "ऑर्डर पर्ची / फोटो" : "Order Slip / Parchi"}
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200">
+                    {editingOrder.orderCode}
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                    ✏️ {lang === "hi" ? "ऑर्डर संपादन (Edit)" : "Edit Order"}
+                  </span>
+                </div>
+                <h3 className="font-bold text-base text-slate-900 mt-1">
+                  {lang === "hi" ? "ऑर्डर विवरण में बदलाव करें" : "Update Order Details"}
                 </h3>
               </div>
-              <button onClick={() => setViewingParchi(null)} className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => setEditingOrder(null)}
+                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            {/* If uploaded real image */}
-            {viewingParchi.receiptPhoto && viewingParchi.receiptPhoto.startsWith("data:image") ? (
-              <div className="space-y-2">
-                <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center">
-                  <img
-                    src={viewingParchi.receiptPhoto}
-                    alt={`Parchi ${viewingParchi.orderCode}`}
-                    className="max-h-[60vh] w-full object-contain rounded-xl"
+            <form onSubmit={handleSaveEditOrder} className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Customer Name */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    {lang === "hi" ? "ग्राहक / दुकान का नाम *" : "Customer Name *"}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.customerName}
+                    onChange={(e) => setEditForm({ ...editForm, customerName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   />
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-600 font-mono">
-                  <span>{viewingParchi.customerName}</span>
-                  <span>{viewingParchi.itemsCount} {lang === "hi" ? "सामान" : "Items"}</span>
+
+                {/* Customer Phone */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    {lang === "hi" ? "मोबाइल नंबर" : "Phone"}
+                  </label>
+                  <input
+                    type="tel"
+                    value={editForm.customerPhone}
+                    onChange={(e) => setEditForm({ ...editForm, customerPhone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  />
+                </div>
+
+                {/* Item Count */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    {lang === "hi" ? "आइटम की संख्या" : "Item Count"}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editForm.itemCount}
+                    onChange={(e) => setEditForm({ ...editForm, itemCount: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  />
+                </div>
+
+                {/* Delivery Address */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    {lang === "hi" ? "डिलीवरी पता" : "Delivery Address"}
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-medium"
+                  />
                 </div>
               </div>
-            ) : (
-              <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 text-center text-xs text-amber-950 font-mono space-y-2 shadow-inner">
-                <FileText size={36} className="mx-auto text-amber-600" />
-                <p className="font-bold text-sm text-slate-900">{viewingParchi.orderCode} - Counter Slip</p>
-                <p className="text-slate-700">{viewingParchi.itemsDescription || `${viewingParchi.itemsCount} items`}</p>
-                <p className="text-[10px] text-amber-700">Customer: {viewingParchi.customerName} • {viewingParchi.phone}</p>
-              </div>
-            )}
 
-            <button
-              onClick={() => setViewingParchi(null)}
-              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-            >
-              {lang === "hi" ? "बंद करें" : "Close Slip"}
-            </button>
+              {/* Items Summary */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">
+                  {lang === "hi" ? "सामान विवरण (Items)" : "Items Summary"}
+                </label>
+                <textarea
+                  rows={2}
+                  value={editForm.itemsDescription}
+                  onChange={(e) => setEditForm({ ...editForm, itemsDescription: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              {/* Priority */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">
+                  {lang === "hi" ? "प्राथमिकता (Priority)" : "Priority"}
+                </label>
+                <select
+                  value={editForm.priority}
+                  onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as any })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                >
+                  <option value="Normal">{lang === "hi" ? "सामान्य (Normal)" : "Normal"}</option>
+                  <option value="High">{lang === "hi" ? "उच्च (High)" : "High"}</option>
+                  <option value="Urgent">{lang === "hi" ? "तत्काल (Urgent)" : "Urgent"}</option>
+                </select>
+              </div>
+
+              {/* Slips Manager in Edit */}
+              <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-amber-600" />
+                    {lang === "hi" ? "पर्चियां प्रबंधित करें" : "Manage Slips"} ({editForm.fileDataUrls.length})
+                  </label>
+                  <label className="text-xs font-bold text-blue-600 hover:underline cursor-pointer flex items-center gap-1">
+                    <Plus size={13} /> {lang === "hi" ? "+ और जोड़ें" : "+ Add More"}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length > 0) {
+                          const newSlips: string[] = [];
+                          for (const file of files) {
+                            try {
+                              const compressed = await compressImage(file, 900, 900, 0.65);
+                              newSlips.push(compressed);
+                            } catch {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const res = event.target?.result as string;
+                                if (res) newSlips.push(res);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }
+                          setEditForm((prev) => ({
+                            ...prev,
+                            fileDataUrls: [...prev.fileDataUrls, ...newSlips],
+                          }));
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {editForm.fileDataUrls.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {editForm.fileDataUrls.map((url, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-xl border border-amber-300 overflow-hidden bg-white shadow-xs group">
+                        <img src={url} alt={`Slip ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setEditForm((prev) => ({
+                            ...prev,
+                            fileDataUrls: prev.fileDataUrls.filter((_, i) => i !== idx),
+                          }))}
+                          className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-md hover:bg-red-700 cursor-pointer"
+                          title="Remove Slip"
+                        >
+                          ×
+                        </button>
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white text-center font-mono py-0.2">
+                          #{idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 italic">
+                    {lang === "hi" ? "कोई पर्ची संलग्न नहीं है" : "No slips attached"}
+                  </p>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">
+                  {lang === "hi" ? "निर्देश (Notes)" : "Notes"}
+                </label>
+                <input
+                  type="text"
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-50"
+                >
+                  {lang === "hi" ? "रद्द करें" : "Cancel"}
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{lang === "hi" ? "बदलाव सुरक्षित करें" : "Save Changes"}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* EMPLOYEE ORDER BROADCAST MODAL */}
+      {/* EMPLOYEE ORDER BROADCAST MODAL (MULTIPLE SLIPS) */}
       {showBroadcastModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto space-y-4">
@@ -819,7 +1415,7 @@ export default function EmployeeOrdersPage() {
                     {lang === "hi" ? "नया ग्राहक ऑर्डर ब्रॉडकास्ट करें" : "Broadcast New Customer Order"}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    {lang === "hi" ? "दुकान पूल में भेजें या खुद के लिए रखें" : "Send to shop pool or handle directly"}
+                    {lang === "hi" ? "एक या अधिक पर्चियां अपलोड करें और पूल में भेजें" : "Attach slips & send to shop pool"}
                   </p>
                 </div>
               </div>
@@ -886,22 +1482,6 @@ export default function EmployeeOrdersPage() {
                         ))}
                     </select>
                   </div>
-                )}
-
-                {newOrder.target === "POOL" && (
-                  <p className="text-[10px] text-blue-700 font-medium">
-                    {lang === "hi"
-                      ? "✓ सभी सक्रिय कर्मचारियों के फोन पर नोटिफिकेशन जाएगा और जो पहले क्लेम करेगा उसे असाइन होगा।"
-                      : "✓ Will be broadcasted to pool. Any active staff member can claim it."}
-                  </p>
-                )}
-
-                {newOrder.target === "SELF" && (
-                  <p className="text-[10px] text-indigo-700 font-medium">
-                    {lang === "hi"
-                      ? "✓ यह ऑर्डर सीधे आपके 'मेरे ऑर्डर्स' टैब में क्लेम होकर जुड़ जाएगा।"
-                      : "✓ Will be assigned directly to your active orders queue."}
-                  </p>
                 )}
               </div>
 
@@ -995,45 +1575,71 @@ export default function EmployeeOrdersPage() {
                 />
               </div>
 
-              {/* Parchi Photo Upload */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <ImageIcon className="w-4 h-4 text-blue-600" />
-                  {lang === "hi" ? "पर्ची / बिल की फोटो खींचें या अपलोड करें" : "Snap or Upload Parchi Receipt Photo"}
-                </label>
+              {/* Multiple Parchi Photos Upload */}
+              <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-blue-600" />
+                    {lang === "hi" ? "पर्ची की फोटो (Multiple Slips Allowed)" : "Upload Parchi Slips"}
+                  </label>
+                  <span className="text-[11px] font-mono font-bold text-blue-700">
+                    {newOrder.fileDataUrls.length} {lang === "hi" ? "पर्चियां जुड़ीं" : "Slips"}
+                  </span>
+                </div>
+
                 <input
                   type="file"
+                  multiple
                   accept="image/*"
-                  capture="environment"
                   onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      try {
-                        const compressed = await compressImage(file, 800, 800, 0.65);
-                        setNewOrder((prev) => ({
-                          ...prev,
-                          fileName: file.name,
-                          fileDataUrl: compressed,
-                        }));
-                      } catch {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          setNewOrder((prev) => ({
-                            ...prev,
-                            fileName: file.name,
-                            fileDataUrl: (event.target?.result as string) || "",
-                          }));
-                        };
-                        reader.readAsDataURL(file);
+                    const files = Array.from(e.target.files || []);
+                    if (files.length > 0) {
+                      const newSlips: string[] = [];
+                      for (const file of files) {
+                        try {
+                          const compressed = await compressImage(file, 900, 900, 0.65);
+                          newSlips.push(compressed);
+                        } catch {
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const res = event.target?.result as string;
+                            if (res) newSlips.push(res);
+                          };
+                          reader.readAsDataURL(file);
+                        }
                       }
+                      setNewOrder((prev) => ({
+                        ...prev,
+                        fileDataUrls: [...prev.fileDataUrls, ...newSlips],
+                      }));
                     }
                   }}
                   className="text-xs text-slate-600 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
                 />
-                {newOrder.fileName && (
-                  <span className="text-xs font-mono font-bold text-emerald-700 flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" /> {newOrder.fileName} (Ready)
-                  </span>
+
+                {/* Previews */}
+                {newOrder.fileDataUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {newOrder.fileDataUrls.map((url, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-xl border border-blue-300 overflow-hidden bg-white shadow-xs group">
+                        <img src={url} alt={`Slip ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setNewOrder((prev) => ({
+                            ...prev,
+                            fileDataUrls: prev.fileDataUrls.filter((_, i) => i !== idx),
+                          }))}
+                          className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-md hover:bg-red-700 cursor-pointer"
+                          title="Remove Slip"
+                        >
+                          ×
+                        </button>
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white text-center font-mono py-0.2">
+                          #{idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 

@@ -328,7 +328,7 @@ def _get_initial_clean_store() -> Dict[str, Any]:
 
 
 def _sanitize_orders(orders_list: list) -> list:
-    """Shrinks any oversized receiptPhoto (e.g. > 150KB raw base64) to prevent cloud sync stall."""
+    """Shrinks any oversized receiptPhoto (e.g. > 200KB raw base64) to prevent cloud sync stall."""
     if not isinstance(orders_list, list):
         return []
     cleaned = []
@@ -336,9 +336,14 @@ def _sanitize_orders(orders_list: list) -> list:
         if isinstance(item, dict):
             item_copy = dict(item)
             photo = item_copy.get("receiptPhoto")
-            if photo and isinstance(photo, str) and len(photo) > 150000:
-                # Truncate oversized raw photo so it doesn't block sync
+            if photo and isinstance(photo, str) and len(photo) > 200000:
                 item_copy["receiptPhoto"] = "uploaded_parchi.jpg"
+            photos = item_copy.get("receiptPhotos")
+            if isinstance(photos, list):
+                item_copy["receiptPhotos"] = [
+                    p if (isinstance(p, str) and len(p) <= 200000) else "uploaded_parchi.jpg"
+                    for p in photos
+                ]
             cleaned.append(item_copy)
     return cleaned
 
