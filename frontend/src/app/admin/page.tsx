@@ -41,8 +41,10 @@ import {
   CRMStoreData,
 } from "@/lib/store";
 import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
+import { useLanguage } from "@/lib/i18n";
 
 export default function AdminDashboardPage() {
+  const { lang, t } = useLanguage();
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [installBanner, setInstallBanner] = useState(true);
   const [storeData, setStoreData] = useState<CRMStoreData | null>(null);
@@ -185,8 +187,8 @@ export default function AdminDashboardPage() {
       {/* Header with Quick Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Real-time workforce overview across attendance, tasks, orders, and ledger.</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{lang === "hi" ? "डैशबोर्ड" : "Dashboard"}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{lang === "hi" ? "हाज़िरी, टास्क, ऑर्डर्स और लेजर का लाइव विवरण।" : "Real-time workforce overview across attendance, tasks, orders, and ledger."}</p>
         </div>
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <Link
@@ -194,14 +196,14 @@ export default function AdminDashboardPage() {
             className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] border border-blue-200 rounded-xl text-xs font-semibold transition-colors shadow-2xs"
           >
             <QrCode size={15} />
-            <span>Open Shop QR</span>
+            <span>{lang === "hi" ? "दुकान QR खोलें" : "Open Shop QR"}</span>
           </Link>
           <Link
             href="/admin/orders"
             className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a73e8] hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
           >
             <Package size={15} />
-            <span>+ Dispatch Order</span>
+            <span>{lang === "hi" ? "+ नया ऑर्डर डिस्पैच" : "+ Dispatch Order"}</span>
           </Link>
         </div>
       </div>
@@ -217,42 +219,46 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* TOP SECTION: ADMIN MODULES & HIGHLIGHTED SHORTCUTS (Mobile-First, Big Fonts, Vibrant Cards) */}
+      {/* TOP SECTION: ADMIN MODULES & SHORTCUTS (Clean, Executive, Language-Pure, Mobile-Friendly) */}
       <div className="space-y-3.5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <span>🚀 मुख्य कार्य व मॉड्यूल्स (Admin Shortcuts)</span>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              {lang === "hi" ? "एडमिन मॉड्यूल्स और शॉर्टकट्स" : "Admin Modules & Shortcuts"}
             </h2>
             <p className="text-xs text-slate-500 font-medium">
-              मोबाइल पर आसान उपयोग के लिए बड़े बटन्स और त्वरित एक्सेस
+              {lang === "hi"
+                ? "त्वरित 1-टैप मोबाइल नेविगेशन और मुख्य कार्य"
+                : "Fast 1-tap mobile navigation across operations"}
             </p>
           </div>
-          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-            1-Tap Actions
+          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+            {lang === "hi" ? "1-टैप एक्सेस" : "1-Tap Quick Access"}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5">
           {/* 1. Orders */}
           <Link
             href="/admin/orders"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 text-white shadow-md shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-blue-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Package className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                {openOrders.length} Pool
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                {openOrders.length} {lang === "hi" ? "पूल" : "Pool"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                ऑर्डर्स (Orders)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "ऑर्डर्स" : "Orders"}
               </h3>
-              <p className="text-[11px] text-blue-100 font-medium truncate">
-                {orders.length} कुल • पर्ची व प्रसारण
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi"
+                  ? `${orders.length} कुल • पर्ची व डिस्पैच`
+                  : `${orders.length} total • Slips & dispatch`}
               </p>
             </div>
           </Link>
@@ -260,46 +266,50 @@ export default function AdminDashboardPage() {
           {/* 2. Attendance */}
           <Link
             href="/admin/attendance"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-800 text-white shadow-md shadow-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-emerald-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Clock className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                {presentCount} Live
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                {presentCount} {lang === "hi" ? "लाइव" : "Live"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                हाज़िरी (Attendance)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "हाज़िरी रजिस्टर" : "Attendance Register"}
               </h3>
-              <p className="text-[11px] text-emerald-100 font-medium truncate">
-                {presentCount} उपस्थित • 10m Geofence
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi"
+                  ? `${presentCount} उपस्थित • 10m Geofence`
+                  : `${presentCount} present • 10m Geofence`}
               </p>
             </div>
           </Link>
 
-          {/* 3. Day Off / Auto Checkout (Direct 1-Tap Action!) */}
+          {/* 3. Day Off / Auto Checkout (Direct 1-Tap Action) */}
           <button
             type="button"
             onClick={handleDayOffAutoCheckout}
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-red-600 via-rose-700 to-red-900 text-white shadow-lg shadow-red-500/30 ring-2 ring-red-400/70 hover:shadow-xl hover:shadow-red-500/40 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px] text-left cursor-pointer"
+            className="group rounded-2xl p-4 bg-red-50/70 border border-red-200/90 hover:bg-red-100/80 hover:border-red-300 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs text-left cursor-pointer"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:rotate-12 transition-transform">
-                <Power className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 border border-red-200 flex items-center justify-center shrink-0 group-hover:rotate-12 transition-transform">
+                <Power className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white text-red-700 tracking-wider animate-pulse shadow-xs">
-                1-Tap Close
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600 text-white shadow-2xs">
+                {lang === "hi" ? "1-टैप" : "1-Tap"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                Day Off (दुकान बंद)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-red-950 tracking-tight">
+                {lang === "hi" ? "दुकान बंद (Day Off)" : "Day Off (Auto Checkout)"}
               </h3>
-              <p className="text-[11px] text-red-100 font-medium truncate">
-                सभी का ऑटो चेक-आउट (0 Overtime)
+              <p className="text-[11px] text-red-700 font-medium truncate mt-0.5">
+                {lang === "hi"
+                  ? "ऑटो चेक-आउट (0 ओवरटाइम)"
+                  : "Auto checkout (0 overtime)"}
               </p>
             </div>
           </button>
@@ -307,22 +317,22 @@ export default function AdminDashboardPage() {
           {/* 4. Shop QR */}
           <Link
             href="/admin/attendance/qr"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-purple-600 via-violet-700 to-purple-900 text-white shadow-md shadow-purple-500/20 hover:shadow-xl hover:shadow-purple-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-purple-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <QrCode className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                Counter
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                {lang === "hi" ? "काउंटर" : "Counter"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                दुकान QR (Shop QR)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "दुकान QR" : "Shop Counter QR"}
               </h3>
-              <p className="text-[11px] text-purple-100 font-medium truncate">
-                काउंटर सत्यापन कोड
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi" ? "डेस्क सत्यापन टोकन" : "Desk verification token"}
               </p>
             </div>
           </Link>
@@ -330,22 +340,22 @@ export default function AdminDashboardPage() {
           {/* 5. Employees */}
           <Link
             href="/admin/employees"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-amber-600 via-orange-600 to-amber-800 text-white shadow-md shadow-amber-500/20 hover:shadow-xl hover:shadow-amber-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-amber-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Users className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                {employees.length} Staff
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                {employees.length} {lang === "hi" ? "स्टाफ" : "Staff"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                कर्मचारी (Staff)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "कर्मचारी" : "Employees"}
               </h3>
-              <p className="text-[11px] text-amber-100 font-medium truncate">
-                14 कर्मचारी • प्रोफाइल व सैलरी
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi" ? "14 प्रोफाइल व सैलरी" : "14 staff profiles & wages"}
               </p>
             </div>
           </Link>
@@ -353,22 +363,24 @@ export default function AdminDashboardPage() {
           {/* 6. Leaves */}
           <Link
             href="/admin/leaves"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-rose-600 via-pink-700 to-rose-900 text-white shadow-md shadow-rose-500/20 hover:shadow-xl hover:shadow-rose-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-rose-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Calendar className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                {pendingLeaves.length} New
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-100">
+                {pendingLeaves.length} {lang === "hi" ? "लंबित" : "Pending"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                छुट्टियां (Leaves)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "छुट्टियां" : "Leave Requests"}
               </h3>
-              <p className="text-[11px] text-rose-100 font-medium truncate">
-                {pendingLeaves.length} लंबित आवेदन • अनुमोदन
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi"
+                  ? `${pendingLeaves.length} आवेदन • अनुमोदन`
+                  : `${pendingLeaves.length} pending review`}
               </p>
             </div>
           </Link>
@@ -376,22 +388,22 @@ export default function AdminDashboardPage() {
           {/* 7. Tasks */}
           <Link
             href="/admin/tasks/review"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-cyan-600 via-teal-700 to-cyan-900 text-white shadow-md shadow-cyan-500/20 hover:shadow-xl hover:shadow-cyan-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-cyan-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                {tasksForReview.length} Review
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-100">
+                {tasksForReview.length} {lang === "hi" ? "सबूत" : "Proofs"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                टास्क (Tasks)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "टास्क समीक्षा" : "Task Review"}
               </h3>
-              <p className="text-[11px] text-cyan-100 font-medium truncate">
-                {tasksForReview.length} सबूत सत्यापन हेतु
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi" ? "सबूत सत्यापन व रिव्यू" : "Proof verification & review"}
               </p>
             </div>
           </Link>
@@ -399,22 +411,22 @@ export default function AdminDashboardPage() {
           {/* 8. Payroll */}
           <Link
             href="/admin/payroll"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-teal-600 via-emerald-700 to-teal-900 text-white shadow-md shadow-teal-500/20 hover:shadow-xl hover:shadow-teal-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-teal-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 border border-teal-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <CircleDollarSign className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                Salary
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                {lang === "hi" ? "सैलरी" : "Wages"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                वेतन (Payroll)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "वेतन रजिस्टर" : "Payroll & Wages"}
               </h3>
-              <p className="text-[11px] text-teal-100 font-medium truncate">
-                सैलरी गणना व अग्रिम हिसाब
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi" ? "गणना, अग्रिम व पर्ची" : "Calculations, advances & slips"}
               </p>
             </div>
           </Link>
@@ -422,22 +434,22 @@ export default function AdminDashboardPage() {
           {/* 9. Reports */}
           <Link
             href="/admin/reports"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-indigo-600 via-purple-700 to-indigo-900 text-white shadow-md shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-indigo-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <FileBarChart className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                Reports
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                {lang === "hi" ? "एक्सेल" : "Excel"}
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                रिपोर्ट्स (Reports)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "रिपोर्ट्स व लेजर" : "Reports & Ledger"}
               </h3>
-              <p className="text-[11px] text-indigo-100 font-medium truncate">
-                एक्सेल व PDF डाउनलोड
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi" ? "एक्सेल व PDF डाउनलोड" : "Excel & PDF downloads"}
               </p>
             </div>
           </Link>
@@ -445,22 +457,22 @@ export default function AdminDashboardPage() {
           {/* 10. Settings */}
           <Link
             href="/admin/settings"
-            className="group relative overflow-hidden rounded-3xl p-4 sm:p-5 bg-gradient-to-br from-slate-700 via-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 active:scale-95 transition-all flex flex-col justify-between min-h-[110px]"
+            className="group rounded-2xl p-4 bg-white border border-slate-200/90 hover:border-slate-400 hover:shadow-md transition-all active:scale-[0.98] flex flex-col justify-between min-h-[105px] shadow-xs"
           >
             <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-xs group-hover:rotate-45 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0 group-hover:rotate-45 transition-transform">
                 <Settings className="w-5 h-5" />
               </div>
-              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
-                10m Lock
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                10m
               </span>
             </div>
-            <div className="space-y-0.5 pt-2">
-              <h3 className="text-base sm:text-lg font-black leading-tight text-white tracking-tight">
-                सेटिंग्स (Settings)
+            <div className="pt-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {lang === "hi" ? "दुकान सेटिंग्स" : "Shop Settings"}
               </h3>
-              <p className="text-[11px] text-slate-300 font-medium truncate">
-                पर्बतसर GPS व शिफ्ट नियम
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                {lang === "hi" ? "पर्बतसर GPS व शिफ्ट" : "Parbatsar GPS & shift rules"}
               </p>
             </div>
           </Link>
@@ -474,9 +486,9 @@ export default function AdminDashboardPage() {
             <TrendingUp size={20} />
           </div>
           <div>
-            <h3 className="font-bold text-slate-900 text-sm">Workforce Live Attendance Rate</h3>
+            <h3 className="font-bold text-slate-900 text-sm">{lang === "hi" ? "कर्मचारी लाइव हाज़िरी दर" : "Workforce Live Attendance Rate"}</h3>
             <p className="text-xs text-slate-500">
-              <strong className="text-emerald-600 font-semibold">{presentCount} of {totalEmpCount} Staff</strong> checked in today ({attendanceRate}%)
+              <strong className="text-emerald-600 font-semibold">{presentCount} of {totalEmpCount} Staff</strong> {lang === "hi" ? `आज उपस्थित (${attendanceRate}%)` : `checked in today (${attendanceRate}%)`}
             </p>
           </div>
         </div>
@@ -485,8 +497,8 @@ export default function AdminDashboardPage() {
             <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${attendanceRate}%` }} />
           </div>
           <div className="flex justify-between text-[11px] text-slate-400">
-            <span>{presentCount} Present</span>
-            <span>{absentCount} Absent</span>
+            <span>{presentCount} {lang === "hi" ? "उपस्थित" : "Present"}</span>
+            <span>{absentCount} {lang === "hi" ? "अनुपस्थित" : "Absent"}</span>
           </div>
         </div>
       </div>
@@ -495,9 +507,9 @@ export default function AdminDashboardPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-            ATTENDANCE TODAY
+            {lang === "hi" ? "आज की हाज़िरी (Attendance Today)" : "ATTENDANCE TODAY"}
           </h2>
-          <span className="text-[11px] text-blue-600 font-medium">Click card to inspect</span>
+          <span className="text-[11px] text-blue-600 font-medium">{lang === "hi" ? "विवरण देखने हेतु क्लिक करें" : "Click card to inspect"}</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -508,16 +520,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                PRESENT
+                {lang === "hi" ? "उपस्थित" : "PRESENT"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-emerald-600 font-semibold flex items-center gap-0.5">
-                View list <ArrowRight size={10} />
+                {lang === "hi" ? "सूची देखें" : "View list"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-emerald-600 font-mono">
               {presentCount}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">{presentCount > 0 ? "Active real-time shift logged" : "No staff checked in yet"}</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? (presentCount > 0 ? "लाइव शिफ्ट सक्रिय है" : "कोई कर्मचारी चेक-इन नहीं") : (presentCount > 0 ? "Active real-time shift logged" : "No staff checked in yet")}</p>
           </div>
 
           {/* Absent Card */}
@@ -527,16 +539,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                NOT CHECKED IN / ABSENT
+                {lang === "hi" ? "अनुपस्थित" : "NOT CHECKED IN / ABSENT"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-red-500 font-semibold flex items-center gap-0.5">
-                Inspect <ArrowRight size={10} />
+                {lang === "hi" ? "जांचें" : "Inspect"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-red-500 font-mono">
               {absentCount}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">{absentCount > 0 ? `${absentCount} staff not on duty` : "All staff present"}</p>
+            <p className="text-[11px] text-slate-400 mt-1">{absentCount > 0 ? `${lang === "hi" ? `${absentCount} कर्मचारी ड्यूटी पर नहीं` : `${absentCount} staff not on duty`}` : "All staff present"}</p>
           </div>
 
           {/* Incomplete Card */}
@@ -546,16 +558,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                ACTIVE SHIFTS
+                {lang === "hi" ? "सक्रिय शिफ्ट" : "ACTIVE SHIFTS"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-amber-600 font-semibold flex items-center gap-0.5">
-                Details <ArrowRight size={10} />
+                {lang === "hi" ? "विवरण" : "Details"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-amber-600 font-mono">
               {Object.keys(activeShifts).filter((k) => activeShifts[k]?.shiftState === "ACTIVE").length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Live working right now</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? "अभी कार्य जारी है" : "Live working right now"}</p>
           </div>
 
           {/* Pending Corrections Card */}
@@ -565,16 +577,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                PENDING CORRECTIONS
+                {lang === "hi" ? "लंबित सुधार" : "PENDING CORRECTIONS"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-amber-600 font-semibold flex items-center gap-0.5">
-                Review <ArrowRight size={10} />
+                {lang === "hi" ? "समीक्षा" : "Review"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-amber-600 font-mono">
               {pendingCorrectionsList.length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Timestamp fix requests</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? "समय सुधार अनुरोध" : "Timestamp fix requests"}</p>
           </div>
         </div>
       </div>
@@ -592,16 +604,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                BROADCAST OPEN
+                {lang === "hi" ? "पूल ऑर्डर्स" : "BROADCAST OPEN"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-blue-600 font-semibold flex items-center gap-0.5">
-                Claim Pool <ArrowRight size={10} />
+                {lang === "hi" ? "ऑर्डर पूल" : "Claim Pool"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-slate-900 font-mono">
               {openOrders.length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">{openOrders.length} orders in claim pool</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? `${openOrders.length} ऑर्डर क्लेम पूल में` : `${openOrders.length} orders in claim pool`}</p>
           </div>
 
           {/* Tasks Awaiting Review */}
@@ -611,16 +623,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                TASKS AWAITING REVIEW
+                {lang === "hi" ? "टास्क रिव्यू" : "TASKS AWAITING REVIEW"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-blue-600 font-semibold flex items-center gap-0.5">
-                Inspect <ArrowRight size={10} />
+                {lang === "hi" ? "जांचें" : "Inspect"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-[#1a73e8] font-mono">
               {tasksForReview.length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">{tasksForReview.length} submitted evidence</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? `${tasksForReview.length} सबूत जमा किए गए` : `${tasksForReview.length} submitted evidence`}</p>
           </div>
 
           {/* Pending Leave */}
@@ -630,16 +642,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                PENDING LEAVE
+                {lang === "hi" ? "लंबित छुट्टियां" : "PENDING LEAVE"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-amber-600 font-semibold flex items-center gap-0.5">
-                Approve <ArrowRight size={10} />
+                {lang === "hi" ? "अनुमोदन" : "Approve"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-amber-600 font-mono">
               {pendingLeaves.length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">{pendingLeaves.length} leave requests</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? `${pendingLeaves.length} छुट्टी के आवेदन` : `${pendingLeaves.length} leave requests`}</p>
           </div>
 
           {/* Open Complaints */}
@@ -649,16 +661,16 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                OPEN COMPLAINTS
+                {lang === "hi" ? "खुली शिकायतें" : "OPEN COMPLAINTS"}
               </span>
               <span className="text-[10px] text-slate-400 group-hover:text-amber-600 font-semibold flex items-center gap-0.5">
-                Triage <ArrowRight size={10} />
+                {lang === "hi" ? "कार्रवाई" : "Triage"} <ArrowRight size={10} />
               </span>
             </div>
             <div className="mt-2 text-3xl font-bold text-amber-600 font-mono">
               {openComplaintsList.length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">{openComplaintsList.length} active grievance items</p>
+            <p className="text-[11px] text-slate-400 mt-1">{lang === "hi" ? `${openComplaintsList.length} सक्रिय शिकायतें` : `${openComplaintsList.length} active grievance items`}</p>
           </div>
         </div>
       </div>
@@ -667,8 +679,8 @@ export default function AdminDashboardPage() {
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
-            <h3 className="text-base font-bold text-slate-900">Live Activity Feed (ताज़ा गतिविधियाँ)</h3>
-            <p className="text-xs text-slate-400 mt-0.5">ऑर्डर्स, टास्क व लेजर के रीयल-टाइम अपडेट्स</p>
+            <h3 className="text-base font-bold text-slate-900">{lang === "hi" ? "ताज़ा गतिविधियाँ" : "Live Activity Feed"}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{lang === "hi" ? "ऑर्डर्स, टास्क व लेजर के रीयल-टाइम अपडेट्स" : "Real-time updates across orders, tasks, and ledger"}</p>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>

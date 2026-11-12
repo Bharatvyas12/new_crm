@@ -85,7 +85,17 @@ export interface OrderItem {
   priority?: "Normal" | "High" | "Urgent";
   receiptPhoto?: string;
   receiptPhotos?: string[];
-  status: "Draft" | "Broadcasted" | "Claimed" | "Packing" | "Packed" | "Ready" | "Delivered" | "Cancelled";
+  status: "Draft" | "Broadcasted" | "Claimed" | "Packing" | "Packed" | "Ready" | "In Transit" | "Delivered" | "Cancelled";
+  packedBy?: string;
+  packedAt?: string;
+  deliveryMode?: "DRIVER" | "CUSTOMER_PICKUP";
+  assignedDriverName?: string;
+  assignedDriverCode?: string;
+  assignedDriverPhone?: string;
+  assignedVehicleNumber?: string;
+  inTransitAt?: string;
+  handoverToCustomerAt?: string;
+  deliveryNotes?: string;
   claimedBy?: string;
   claimedAt?: string;
   deliveredAt?: string;
@@ -1227,6 +1237,7 @@ export const claimOrderInStore = (orderId: string, employeeName: string) => {
   if (order) {
     order.status = "Claimed";
     order.claimedBy = employeeName;
+    order.packedBy = employeeName;
     order._updatedTimestamp = Date.now();
     order.updatedAt = new Date().toISOString();
     order.claimedAt = new Date().toLocaleDateString("en-US", {
@@ -1266,6 +1277,82 @@ export const updateOrderStatusInStore = (orderId: string, status: OrderItem["sta
     return true;
   }
   return false;
+};
+
+
+export const dispatchOrderInStore = (
+  orderId: string,
+  data: {
+    deliveryMode: "DRIVER" | "CUSTOMER_PICKUP";
+    driverName?: string;
+    driverCode?: string;
+    driverPhone?: string;
+    vehicleNumber?: string;
+    notes?: string;
+  }
+): boolean => {
+  const store = getCRMStore();
+  const order = (store.orders || []).find((o) => o.id === orderId);
+  if (!order) return false;
+
+  const nowFormatted = new Date().toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  order.deliveryMode = data.deliveryMode;
+  if (data.notes) order.deliveryNotes = data.notes;
+  order._updatedTimestamp = Date.now();
+  order.updatedAt = new Date().toISOString();
+
+  if (data.deliveryMode === "CUSTOMER_PICKUP") {
+    order.status = "Delivered";
+    order.deliveredAt = nowFormatted;
+    order.handoverToCustomerAt = nowFormatted;
+  } else {
+    order.status = "In Transit";
+    order.assignedDriverName = data.driverName || "Assigned Driver";
+    order.assignedDriverCode = data.driverCode || "";
+    order.assignedDriverPhone = data.driverPhone || "";
+    order.assignedVehicleNumber = data.vehicleNumber || "";
+    order.inTransitAt = nowFormatted;
+  }
+
+  store.orders = [order, ...(store.orders || []).filter((o) => o.id !== orderId)];
+  saveCRMStore(store);
+  return true;
+};
+
+export const completeOrderDeliveryInStore = (
+  orderId: string,
+  data?: { notes?: string }
+): boolean => {
+  const store = getCRMStore();
+  const order = (store.orders || []).find((o) => o.id === orderId);
+  if (!order) return false;
+
+  const nowFormatted = new Date().toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  order.status = "Delivered";
+  order.deliveredAt = nowFormatted;
+  if (data?.notes) {
+    order.deliveryNotes = data.notes;
+  }
+  order._updatedTimestamp = Date.now();
+  order.updatedAt = new Date().toISOString();
+
+  store.orders = [order, ...(store.orders || []).filter((o) => o.id !== orderId)];
+  saveCRMStore(store);
+  return true;
 };
 
 export const editOrderInStore = (orderId: string, updates: Partial<OrderItem>): boolean => {

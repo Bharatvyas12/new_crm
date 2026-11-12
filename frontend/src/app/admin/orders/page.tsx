@@ -38,6 +38,8 @@ import {
   saveCRMStore,
   registerOrderInStore,
   updateOrderStatusInStore,
+  dispatchOrderInStore,
+  completeOrderDeliveryInStore,
   deleteOrderInStore,
   editOrderInStore,
   subscribeToCRMStore,
@@ -48,11 +50,31 @@ import {
   EmployeeItem,
 } from "@/lib/store";
 import { compressImage } from "@/lib/imageCompressor";
+import { useLanguage } from "@/lib/i18n";
 import { forceSyncNow } from "@/lib/syncEngine";
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [employees, setEmployees] = useState<EmployeeItem[]>([]);
+  const { lang, t } = useLanguage();
+  const [orders, setOrders] = useState<OrderItem[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return getCRMStore().orders || [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [employees, setEmployees] = useState<EmployeeItem[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return getCRMStore().employees || [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
   const [statusFilter, setStatusFilter] = useState("Any");
   const [dateFilter, setDateFilter] = useState<"ALL" | "TODAY" | "YESTERDAY" | "LAST_7" | "THIS_MONTH" | "CUSTOM">("ALL");
   const [customDate, setCustomDate] = useState("");
@@ -63,6 +85,86 @@ export default function OrdersPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modals
+    // Admin Driver Dispatch Modal State
+  const [dispatchingOrder, setDispatchingOrder] = useState<OrderItem | null>(null);
+  const [dispatchForm, setDispatchForm] = useState({
+    selectedDriverCode: "",
+    driverName: "",
+    driverPhone: "",
+    vehicleNumber: "",
+    notes: "",
+  });
+
+  const handleOpenDispatchModal = (order: OrderItem) => {
+    setDispatchingOrder(order);
+    const deliveryEmp = employees.find(
+      (e) => e.department === "Delivery" || (e.designation && e.designation.toLowerCase().includes("driver"))
+    );
+    setDispatchForm({
+      selectedDriverCode: deliveryEmp?.code || "",
+      driverName: deliveryEmp?.name || "",
+      driverPhone: deliveryEmp?.phone || "",
+      vehicleNumber: "",
+      notes: "",
+    });
+  };
+
+  const handleConfirmDriverDispatch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchingOrder) return;
+    if (!dispatchForm.driverName.trim()) {
+      alert(lang === "hi" ? "कृपया ड्राइवर का नाम दर्ज करें!" : "Please enter Driver Name!");
+      return;
+    }
+
+    dispatchOrderInStore(dispatchingOrder.id, {
+      deliveryMode: "DRIVER",
+      driverName: dispatchForm.driverName.trim(),
+      driverCode: dispatchForm.selectedDriverCode,
+      driverPhone: dispatchForm.driverPhone.trim(),
+      vehicleNumber: dispatchForm.vehicleNumber.trim(),
+      notes: dispatchForm.notes.trim(),
+    });
+
+    showToast(
+      lang === "hi"
+        ? `✓ ऑर्डर ${dispatchingOrder.orderCode} ड्राइवर ${dispatchForm.driverName} को सौंपा गया (गाड़ी रवाना)!`
+        : `✓ Order ${dispatchingOrder.orderCode} dispatched with driver ${dispatchForm.driverName}!`
+    );
+    setDispatchingOrder(null);
+  };
+
+  const handleCustomerHandover = (order: OrderItem) => {
+    const confirmMsg =
+      lang === "hi"
+        ? `क्या ग्राहक स्वयं गाड़ी या लोडर लाया है और माल ले गया?\n\nऑर्डर: ${order.orderCode} (${order.customerName})`
+        : `Did customer pick up the goods directly at counter?\n\nOrder: ${order.orderCode} (${order.customerName})`;
+
+    if (window.confirm(confirmMsg)) {
+      dispatchOrderInStore(order.id, {
+        deliveryMode: "CUSTOMER_PICKUP",
+      });
+      showToast(
+        lang === "hi"
+          ? `✓ ऑर्डर ${order.orderCode} ग्राहक को सुपुर्द किया गया (डिलीवरी पूर्ण)!`
+          : `✓ Order ${order.orderCode} marked as Customer Handover (Delivered)!`
+      );
+    }
+  };
+
+  const handleCompleteDelivery = (order: OrderItem) => {
+    const notes = window.prompt(
+      lang === "hi" ? "डिलीवरी नोट या रिमार्क्स (वैकल्पिक):" : "Delivery notes or remarks (optional):",
+      ""
+    );
+    completeOrderDeliveryInStore(order.id, { notes: notes || undefined });
+    showToast(
+      lang === "hi"
+        ? `✓ ऑर्डर ${order.orderCode} की डिलीवरी पूर्ण दर्ज हुई!`
+        : `✓ Order ${order.orderCode} marked as Delivered!`
+    );
+  };
+
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [viewingParchiOrder, setViewingParchiOrder] = useState<OrderItem | null>(null);
@@ -376,31 +478,37 @@ export default function OrdersPage() {
       case "Broadcasted":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-            <Radio className="w-3 h-3 text-amber-600 animate-pulse" /> Broadcasted
+            <Radio className="w-3 h-3 text-amber-600 animate-pulse" /> {lang === "hi" ? "प्रसारित पूल" : "Broadcasted"}
           </span>
         );
       case "Claimed":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
-            <Clock className="w-3 h-3 text-blue-600" /> Claimed
+            <Clock className="w-3 h-3 text-blue-600" /> {lang === "hi" ? "स्वीकृत" : "Claimed"}
           </span>
         );
       case "Packing":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-800 border border-purple-200">
-            <Package className="w-3 h-3 text-purple-600" /> Packing
+            <Package className="w-3 h-3 text-purple-600" /> {lang === "hi" ? "पैकिंग जारी" : "Packing"}
           </span>
         );
       case "Ready":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
-            <Truck className="w-3 h-3 text-indigo-600" /> Ready for Delivery
+            <Truck className="w-3 h-3 text-indigo-600" /> {lang === "hi" ? "डिस्पैच तैयार" : "Ready for Delivery"}
+          </span>
+        );
+      case "In Transit":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white animate-pulse">
+            <Truck className="w-3 h-3" /> {lang === "hi" ? "रास्ते में" : "In Transit"}
           </span>
         );
       case "Delivered":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Delivered
+            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> {lang === "hi" ? "डिलीवर पूर्ण" : "Delivered"}
           </span>
         );
       default:
@@ -413,7 +521,7 @@ export default function OrdersPage() {
   };
 
   const isEditableBeforeTransit = (status: OrderItem["status"]) => {
-    return status !== "Ready" && status !== "Delivered" && status !== "Cancelled";
+    return status !== "Ready" && status !== "In Transit" && status !== "Delivered" && status !== "Cancelled";
   };
 
   return (
@@ -429,9 +537,13 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Order Broadcast & Dispatch</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            {lang === "hi" ? "ऑर्डर प्रसारण व डिस्पैच" : "Order Broadcast & Dispatch"}
+          </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Register customer orders with multiple parchi slips, live pool broadcast, and instant editing before transit.
+            {lang === "hi"
+              ? "पर्ची फोटो के साथ ग्राहक ऑर्डर दर्ज करें, पूल में प्रसारित करें व ड्राइवर को सौंपें।"
+              : "Register customer orders with parchi slips, broadcast to pool, and dispatch via drivers."}
           </p>
         </div>
 
@@ -440,18 +552,19 @@ export default function OrdersPage() {
           className="flex items-center gap-2 bg-[#1a73e8] hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer shrink-0"
         >
           <Plus size={16} />
-          <span>+ Register Order</span>
+          <span>{lang === "hi" ? "+ नया ऑर्डर दर्ज करें" : "+ Register Order"}</span>
         </button>
       </div>
 
       {/* Quick Status Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         {[
-          { label: "All Orders", value: "Any", count: orders.length },
-          { label: "Broadcasted (Pool)", value: "Broadcasted", count: orders.filter((o) => o.status === "Broadcasted").length },
-          { label: "Claimed & Packing", value: "Claimed", count: orders.filter((o) => o.status === "Claimed" || o.status === "Packing").length },
-          { label: "Ready / Out for Delivery", value: "Ready", count: orders.filter((o) => o.status === "Ready").length },
-          { label: "Delivered", value: "Delivered", count: orders.filter((o) => o.status === "Delivered").length },
+          { label: lang === "hi" ? "सभी ऑर्डर्स" : "All Orders", value: "Any", count: orders.length },
+          { label: lang === "hi" ? "प्रसारित पूल" : "Broadcasted", value: "Broadcasted", count: orders.filter((o) => o.status === "Broadcasted").length },
+          { label: lang === "hi" ? "स्वीकृत व पैकिंग" : "Claimed & Packing", value: "Claimed", count: orders.filter((o) => o.status === "Claimed" || o.status === "Packing").length },
+          { label: lang === "hi" ? "डिस्पैच तैयार" : "Ready for Dispatch", value: "Ready", count: orders.filter((o) => o.status === "Ready").length },
+          { label: lang === "hi" ? "रास्ते में" : "In Transit", value: "In Transit", count: orders.filter((o) => o.status === "In Transit").length },
+          { label: lang === "hi" ? "डिलीवर पूर्ण" : "Delivered", value: "Delivered", count: orders.filter((o) => o.status === "Delivered").length },
         ].map((tab) => (
           <button
             key={tab.value}
@@ -498,12 +611,12 @@ export default function OrdersPage() {
                 onChange={(e) => setDateFilter(e.target.value as any)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium cursor-pointer"
               >
-                <option value="ALL">All Dates (पूरा इतिहास)</option>
-                <option value="TODAY">Today (आज)</option>
-                <option value="YESTERDAY">Yesterday (कल)</option>
-                <option value="LAST_7">Last 7 Days (पिछले 7 दिन)</option>
-                <option value="THIS_MONTH">This Month (इस महीने)</option>
-                <option value="CUSTOM">Specific Date (तारीख चुनें)...</option>
+                <option value="ALL">{lang === "hi" ? "सभी तारीखें" : "All Dates"}</option>
+                <option value="TODAY">{lang === "hi" ? "आज" : "Today"}</option>
+                <option value="YESTERDAY">{lang === "hi" ? "कल" : "Yesterday"}</option>
+                <option value="LAST_7">{lang === "hi" ? "पिछले 7 दिन" : "Last 7 Days"}</option>
+                <option value="THIS_MONTH">{lang === "hi" ? "इस महीने" : "This Month"}</option>
+                <option value="CUSTOM">{lang === "hi" ? "विशिष्ट तारीख चुनें..." : "Specific Date..."}</option>
               </select>
 
               {dateFilter === "CUSTOM" && (
@@ -610,13 +723,13 @@ export default function OrdersPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3 px-5">Order Code</th>
-                <th className="py-3 px-5">Customer Details</th>
-                <th className="py-3 px-5">Items / Parchi Slip</th>
-                <th className="py-3 px-5">Status</th>
-                <th className="py-3 px-5">Claimed By</th>
-                <th className="py-3 px-5">Created Time</th>
-                <th className="py-3 px-5 text-right">Actions</th>
+                <th className="py-3 px-5">{lang === "hi" ? "ऑर्डर कोड" : "Order Code"}</th>
+                <th className="py-3 px-5">{lang === "hi" ? "ग्राहक विवरण" : "Customer Details"}</th>
+                <th className="py-3 px-5">{lang === "hi" ? "सामान व पर्ची" : "Items & Slips"}</th>
+                <th className="py-3 px-5">{lang === "hi" ? "स्थिति" : "Status"}</th>
+                <th className="py-3 px-5">{lang === "hi" ? "पैक व डिलीवरी माध्यम" : "Packer & Delivery"}</th>
+                <th className="py-3 px-5">{lang === "hi" ? "समय" : "Time"}</th>
+                <th className="py-3 px-5 text-right">{lang === "hi" ? "कार्य" : "Actions"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -684,27 +797,41 @@ export default function OrdersPage() {
                     {/* Status */}
                     <td className="py-3.5 px-5">{getStatusBadge(order.status)}</td>
 
-                    {/* Claimed By */}
-                    <td className="py-3.5 px-5">
-                      {order.claimedBy ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px]">
-                              {order.claimedBy.charAt(0)}
-                            </div>
-                            <span className="text-xs font-semibold text-slate-800">{order.claimedBy}</span>
-                          </div>
-                          {order.broadcastTarget === "SPECIFIC" && (
-                            <span className="inline-block text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
-                              Direct Assigned
+                    {/* Packer & Delivery Details */}
+                    <td className="py-3.5 px-5 space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">{lang === "hi" ? "पैक:" : "Pack:"}</span>
+                        {order.packedBy || order.claimedBy ? (
+                          <span className="font-bold text-slate-800 text-xs">{order.packedBy || order.claimedBy}</span>
+                        ) : (
+                          <span className="text-slate-400 italic text-[11px]">{lang === "hi" ? "पूल में खुला" : "Open Pool"}</span>
+                        )}
+                      </div>
+
+                      <div>
+                        {order.deliveryMode === "CUSTOMER_PICKUP" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-200">
+                            🚗 {lang === "hi" ? "ग्राहक स्वयं ले गया" : "Customer Pickup"}
+                          </span>
+                        ) : order.assignedDriverName ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                              🚚 {order.assignedDriverName} {order.assignedVehicleNumber ? `(${order.assignedVehicleNumber})` : ""}
                             </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md">
-                          Unclaimed Pool
-                        </span>
-                      )}
+                            {order.assignedDriverPhone && (
+                              <a href={`tel:${order.assignedDriverPhone}`} className="block text-[10px] text-blue-600 font-medium hover:underline">
+                                📞 {order.assignedDriverPhone}
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {order.status === "Ready"
+                              ? (lang === "hi" ? "⚡ डिस्पैच चयन लंबित" : "⚡ Awaiting Dispatch")
+                              : (order.status === "Delivered" ? (lang === "hi" ? "डिलीवर पूर्ण" : "Delivered") : "—")}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Created Time */}
@@ -731,7 +858,32 @@ export default function OrdersPage() {
                           </button>
                         )}
 
-                        {order.status !== "Delivered" && (
+                        {order.status === "Ready" ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleCustomerHandover(order)}
+                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                              title={lang === "hi" ? "ग्राहक स्वयं ले गया" : "Customer Self-Pickup"}
+                            >
+                              🚗 {lang === "hi" ? "ग्राहक" : "Self"}
+                            </button>
+                            <button
+                              onClick={() => handleOpenDispatchModal(order)}
+                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                              title={lang === "hi" ? "ड्राइवर को सौंपें" : "Assign Driver"}
+                            >
+                              🚚 {lang === "hi" ? "ड्राइवर" : "Driver"}
+                            </button>
+                          </div>
+                        ) : order.status === "In Transit" ? (
+                          <button
+                            onClick={() => handleCompleteDelivery(order)}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer shadow-xs"
+                            title={lang === "hi" ? "डिलीवरी पूर्ण" : "Mark Delivered"}
+                          >
+                            ✓ {lang === "hi" ? "डिलीवर" : "Delivered"}
+                          </button>
+                        ) : order.status !== "Delivered" ? (
                           <button
                             onClick={() => advanceOrderStatus(order)}
                             className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
@@ -739,7 +891,7 @@ export default function OrdersPage() {
                           >
                             Next Step →
                           </button>
-                        )}
+                        ) : null}
 
                         <button
                           onClick={() => setSelectedOrder(order)}
@@ -1449,13 +1601,51 @@ export default function OrdersPage() {
                     </button>
                   )}
 
-                  {selectedOrder.status !== "Delivered" && (
+                  {selectedOrder.status === "Ready" ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const o = selectedOrder;
+                          setSelectedOrder(null);
+                          handleCustomerHandover(o);
+                        }}
+                        className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        🚗 {lang === "hi" ? "ग्राहक स्वयं ले गया" : "Customer Pickup"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const o = selectedOrder;
+                          setSelectedOrder(null);
+                          handleOpenDispatchModal(o);
+                        }}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                      >
+                        🚚 {lang === "hi" ? "ड्राइवर को सौंपें" : "Assign Driver"}
+                      </button>
+                    </div>
+                  ) : selectedOrder.status === "In Transit" ? (
+                    <button
+                      onClick={() => {
+                        const o = selectedOrder;
+                        setSelectedOrder(null);
+                        handleCompleteDelivery(o);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                    >
+                      ✓ {lang === "hi" ? "डिलीवरी पूर्ण दर्ज करें" : "Mark Delivered"}
+                    </button>
+                  ) : selectedOrder.status !== "Delivered" ? (
                     <button
                       onClick={() => advanceOrderStatus(selectedOrder)}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                     >
-                      Advance to Next Step →
+                      {lang === "hi" ? "अगला चरण →" : "Advance to Next Step →"}
                     </button>
+                  ) : (
+                    <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold">
+                      ✓ {lang === "hi" ? "सफलतापूर्वक डिलीवर हुआ" : "Delivered Successfully"}
+                    </span>
                   )}
                   <button
                     onClick={() => setSelectedOrder(null)}
