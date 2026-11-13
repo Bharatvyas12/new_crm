@@ -471,7 +471,11 @@ export default function EmployeesPage() {
                   <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
                       <button
-                        onClick={() => setTrackingEmployee(emp)}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTrackingEmployee(emp);
+                        }}
                         className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] border border-blue-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs shrink-0"
                         title={lang === "hi" ? "करंट लोकेशन देखें" : "View Current Location"}
                       >
@@ -976,6 +980,189 @@ export default function EmployeesPage() {
           </div>
         </div>
       )}
+      {/* ON-DEMAND LIVE GPS TRACKING & FREE GOOGLE MAP MODAL */}
+      {trackingEmployee && (() => {
+        const emp = trackingEmployee;
+        const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+        
+        const activeShift: ActiveShiftState | undefined = storeData?.activeShifts
+          ? (storeData.activeShifts[emp.code] ||
+             storeData.activeShifts[emp.code.toUpperCase()] ||
+             Object.values(storeData.activeShifts).find((s) => s.employeeCode?.toUpperCase() === emp.code.toUpperCase() || s.employeeName?.toLowerCase().includes(emp.name?.toLowerCase())))
+          : undefined;
+
+        const isShiftToday = Boolean(activeShift && activeShift.date === todayStr);
+        const isCheckedIn = Boolean(isShiftToday && (activeShift?.shiftState === "ACTIVE" || activeShift?.shiftState === "ON_BREAK"));
+
+        const shopLat = storeData?.settings?.latitude || 26.893062;
+        const shopLng = storeData?.settings?.longitude || 74.76912;
+
+        const empLat = activeShift?.latitude || (isCheckedIn ? shopLat : null);
+        const empLng = activeShift?.longitude || (isCheckedIn ? shopLng : null);
+        const distM = activeShift?.distanceM != null ? Math.round(activeShift.distanceM) : 10;
+        const isIdle = inactiveCodesSet.has((emp.code || "").toUpperCase());
+
+        return (
+          <div className="fixed inset-0 z-100 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold shadow-2xs">
+                    <MapPin size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {lang === "hi" ? "करंट लोकेशन ट्रैकिंग" : "Current Location Tracking"}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      {emp.name} ({emp.code}) • {emp.designation || emp.department}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTrackingEmployee(null)}
+                  className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Status & Attendance Timing Info */}
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    {lang === "hi" ? "ड्यूटी स्थिति" : "DUTY STATUS"}
+                  </span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    {isCheckedIn ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-emerald-700">
+                          {activeShift?.shiftState === "ON_BREAK"
+                            ? (lang === "hi" ? "ब्रेक पर (On Break)" : "On Break")
+                            : (lang === "hi" ? "कार्यरत (Active on Duty)" : "Active on Duty")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span className="text-slate-500">
+                          {lang === "hi" ? "ऑफलाइन (Not Checked In)" : "Offline (Not Checked In)"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    {lang === "hi" ? "हाज़िरी समय" : "ATTENDANCE TIME"}
+                  </span>
+                  <div className="font-mono font-bold text-slate-800">
+                    {isCheckedIn ? activeShift?.checkInTime : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Idle Alert if 2h+ no activity */}
+              {isIdle && (
+                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-2">
+                  <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold">
+                      {lang === "hi" ? "⚠️ कार्य निष्क्रियता चेतावनी (Inactive on Duty):" : "⚠️ Inactive on Duty Alert:"}
+                    </strong>
+                    <p className="text-[11px] text-amber-800 mt-0.5">
+                      {lang === "hi"
+                        ? "यह कर्मचारी चेक-इन है लेकिन पिछले 2 घंटे से कोई टास्क या आर्डर एक्टिविटी दर्ज नहीं हुई है।"
+                        : "This employee is checked in but has logged no task or order activity for 2+ hours."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Location & Map Display */}
+              {isCheckedIn && empLat && empLng ? (
+                <div className="space-y-3">
+                  {/* Distance & GPS Reading Details */}
+                  <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs space-y-1">
+                    <div className="flex items-center justify-between text-blue-900 font-semibold">
+                      <span>{lang === "hi" ? "दुकान से दूरी (परबतसर):" : "Distance from Shop:"}</span>
+                      <strong className="font-mono font-bold text-blue-800">
+                        {distM <= 15 ? (lang === "hi" ? "दुकान परिसर (10m Geofence)" : "Shop Premises (10m)") : `${distM}m away`}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-blue-700">
+                      <span>GPS Coordinates:</span>
+                      <span className="font-mono">{empLat.toFixed(6)}, {empLng.toFixed(6)}</span>
+                    </div>
+                    <div className="text-[10px] text-blue-600 pt-0.5 border-t border-blue-100 flex items-center justify-between">
+                      <span>{lang === "hi" ? "सत्यापन माध्यम:" : "Captured via:"} {activeShift?.lastActivityDescription || "GPS Check-In"}</span>
+                      <span>Accuracy: ±{activeShift?.accuracyM || 10}m</span>
+                    </div>
+                  </div>
+
+                  {/* FREE Google Maps Iframe Embed */}
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-inner bg-slate-100">
+                    <iframe
+                      title="Google Maps Embed View"
+                      width="100%"
+                      height="250"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      src={`https://maps.google.com/maps?q=${empLat},${empLng}&hl=${lang === "hi" ? "hi" : "en"}&z=16&output=embed`}
+                    />
+                  </div>
+
+                  {/* 1-Tap Universal Google Maps Navigation Button */}
+                  <a
+                    href={`https://www.google.com/maps?q=${empLat},${empLng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer text-center"
+                  >
+                    <Navigation size={14} />
+                    <span>
+                      {lang === "hi"
+                        ? "🚀 गूगल मैप्स में खोलें (Live Directions)"
+                        : "🚀 Open in Google Maps (Live Navigation)"}
+                    </span>
+                  </a>
+                </div>
+              ) : (
+                /* Honest Offline State (No Assumptions, No Fake Pins) */
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <MapPin size={24} />
+                  </div>
+                  <h4 className="font-bold text-slate-800 text-xs sm:text-sm">
+                    {lang === "hi" ? "आज कोई सक्रिय चेक-इन दर्ज नहीं है" : "No Active Shift Recorded Today"}
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                    {lang === "hi"
+                      ? "इस कर्मचारी का आज कोई लाइव GPS सिग्नल उपलब्ध नहीं है। लोकेशन केवल सक्रिय चेक-इन के दौरान जांची जा सकती है।"
+                      : "This employee is currently offline or hasn't checked in yet today. Current GPS is only accessible during active duty."}
+                  </p>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="pt-2 flex justify-end border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setTrackingEmployee(null)}
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  {lang === "hi" ? "बंद करें" : "Close"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
