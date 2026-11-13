@@ -11,6 +11,7 @@ export type User = {
   role?: "ADMIN" | "EMPLOYEE";
   permissions?: string[];
   employee_id?: string;
+  sessionId?: string;
 };
 
 type AuthContextType = {
@@ -41,11 +42,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = (newUser: User) => {
     setUser(newUser);
     localStorage.setItem("wcrm_user", JSON.stringify(newUser));
+    if (newUser.sessionId) {
+      localStorage.setItem("wcrm_session_id", newUser.sessionId);
+    }
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem("wcrm_user");
+    localStorage.removeItem("wcrm_session_id");
   };
 
   return (

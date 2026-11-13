@@ -75,6 +75,7 @@ export default function EmployeeHomePage() {
   const [qrInput, setQrInput] = useState("");
   const [gpsState, setGpsState] = useState<"IDLE" | "LOCATING" | "VERIFIED" | "OUTSIDE_GEOFENCE" | "PERMISSION_DENIED" | "UNAVAILABLE">("IDLE");
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
   const [settingsGeofenceRadius, setSettingsGeofenceRadius] = useState<number>(10);
@@ -265,6 +266,7 @@ export default function EmployeeHomePage() {
       (pos) => {
         const userLat = pos.coords.latitude;
         const userLng = pos.coords.longitude;
+        setUserCoords({ lat: userLat, lng: userLng });
         const acc = Math.round(pos.coords.accuracy || 20);
         setGpsAccuracy(acc);
 
@@ -327,6 +329,9 @@ export default function EmployeeHomePage() {
       department: "Operations",
       distanceM: distanceMeters || 15,
       verifiedViaQR: isQrValid,
+      latitude: userCoords?.lat,
+      longitude: userCoords?.lng,
+      accuracyM: gpsAccuracy || undefined,
     });
     setShiftState("ACTIVE");
     setCheckInTime(shift.checkInTime);

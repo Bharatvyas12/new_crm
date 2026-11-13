@@ -25,13 +25,21 @@ import {
   UserX,
   Lock,
   Sparkles,
+  MapPin,
+  Navigation,
+  Compass,
+  ExternalLink,
 } from "lucide-react";
 import {
   getCRMStore,
   saveCRMStore,
   subscribeToCRMStore,
   EmployeeItem,
+  CRMStoreData,
+  ActiveShiftState,
+  getInactiveStaffList,
 } from "@/lib/store";
+import { useLanguage } from "@/lib/i18n";
 
 export const DEPARTMENTS = [
   "Sales",
@@ -46,6 +54,9 @@ export const DEPARTMENTS = [
 ];
 
 export default function EmployeesPage() {
+  const { lang } = useLanguage();
+  const [storeData, setStoreData] = useState<CRMStoreData | null>(null);
+  const [trackingEmployee, setTrackingEmployee] = useState<EmployeeItem | null>(null);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("Any");
   const [deptFilter, setDeptFilter] = useState("All");
@@ -53,6 +64,7 @@ export default function EmployeesPage() {
 
   const loadEmployees = () => {
     const store = getCRMStore();
+    setStoreData(store);
     setEmployees(store.employees || []);
   };
 
@@ -61,6 +73,9 @@ export default function EmployeesPage() {
     const unsubscribe = subscribeToCRMStore(loadEmployees);
     return () => unsubscribe();
   }, []);
+
+  const inactiveStaff = storeData ? getInactiveStaffList(storeData, 2) : [];
+  const inactiveCodesSet = new Set(inactiveStaff.map((s) => (s.employeeCode || "").toUpperCase()));
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeItem | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -439,6 +454,11 @@ export default function EmployeesPage() {
                       />
                       {emp.status}
                     </span>
+                    {inactiveCodesSet.has((emp.code || "").toUpperCase()) && (
+                      <span className="block mt-1 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded text-center">
+                        ⚠️ {lang === "hi" ? "2h+ निष्क्रिय" : "Idle 2h+"}
+                      </span>
+                    )}
                   </td>
                   <td className="py-3.5 px-5 font-mono text-xs font-semibold text-slate-800">
                     ₹{emp.baseSalary ? emp.baseSalary.toLocaleString() : "—"}
@@ -449,7 +469,16 @@ export default function EmployeesPage() {
                     </span>
                   </td>
                   <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => setTrackingEmployee(emp)}
+                        className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] border border-blue-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs shrink-0"
+                        title={lang === "hi" ? "करंट लोकेशन देखें" : "View Current Location"}
+                      >
+                        <MapPin size={13} className="text-blue-600" />
+                        <span>{lang === "hi" ? "लोकेशन" : "Track"}</span>
+                      </button>
+
                       <button
                         onClick={() => {
                           openEmployeeDetails(emp);

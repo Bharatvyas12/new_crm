@@ -39,6 +39,7 @@ import {
   updateCorrectionStatusInStore,
   autoCheckOutAllActiveEmployeesInStore,
   CRMStoreData,
+  getInactiveStaffList,
 } from "@/lib/store";
 import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
 import { useLanguage } from "@/lib/i18n";
@@ -93,6 +94,7 @@ export default function AdminDashboardPage() {
   const ledger = storeData?.ledger || [];
 
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const inactiveStaff = storeData ? getInactiveStaffList(storeData, 2) : [];
 
   // Working staff members (excluding System Administrator)
   const staffMembers = employees.filter((emp) => !emp.code.includes("ADMIN") && emp.department !== "Management");
@@ -219,7 +221,64 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* TOP SECTION: ADMIN MODULES & SHORTCUTS (Clean, Executive, Language-Pure, Mobile-Friendly) */}
+      {/* Proof-of-Work: INACTIVE ON DUTY ALERT BANNER (Flag if no task/order activity for 2+ hours) */}
+      {inactiveStaff.length > 0 && (
+        <div className="p-4 rounded-3xl bg-amber-50/90 border border-amber-300 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+              <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                <span>
+                  {lang === "hi"
+                    ? "⚠️ कार्य निष्क्रियता चेतावनी (Inactive on Duty)"
+                    : "⚠️ Inactive on Duty Alert"}
+                </span>
+              </h3>
+            </div>
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+              {lang === "hi"
+                ? `${inactiveStaff.length} कर्मचारी 2+ घंटे से निष्क्रिय`
+                : `${inactiveStaff.length} Staff Idle 2h+`}
+            </span>
+          </div>
+
+          <p className="text-xs text-amber-900">
+            {lang === "hi"
+              ? "ये कर्मचारी चेक-इन हैं लेकिन पिछले 2 घंटे से कोई टास्क, ऑर्डर या फील्ड एक्टिविटी दर्ज नहीं हुई है:"
+              : "These staff members are checked in but have logged no task or order action for 2+ hours:"}
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {inactiveStaff.map((st) => (
+              <div
+                key={st.employeeCode}
+                className="bg-white p-3 rounded-2xl border border-amber-200 shadow-2xs flex items-center justify-between"
+              >
+                <div>
+                  <div className="font-bold text-xs text-slate-900">{st.employeeName}</div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {st.department} • In: {st.checkInTime}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 block">
+                    {Math.floor(st.inactiveMinutes / 60)}h {st.inactiveMinutes % 60}m idle
+                  </span>
+                  <Link
+                    href="/admin/employees"
+                    className="text-[10px] text-blue-600 font-bold hover:underline mt-0.5 inline-block"
+                  >
+                    📍 {lang === "hi" ? "लोकेशन जांचें" : "Track GPS"}
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+            {/* TOP SECTION: ADMIN MODULES & SHORTCUTS (Clean, Executive, Language-Pure, Mobile-Friendly) */}
       <div className="space-y-3.5">
         <div className="flex items-center justify-between">
           <div>

@@ -1,6 +1,105 @@
 "use client";
 import restoredOrdersData from "./restoredOrders.json";
 
+
+// SINGLE DEVICE SESSION LOCK ENGINE
+export const registerActiveSessionInStore = (data: {
+  employeeCode: string;
+  employeeName: string;
+  deviceName?: string;
+}): ActiveSessionItem => {
+  const store = getCRMStore();
+  if (!store.activeSessions) store.activeSessions = {};
+
+  const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const sessionItem: ActiveSessionItem = {
+    sessionId,
+    employeeCode: data.employeeCode,
+    employeeName: data.employeeName,
+    deviceName: data.deviceName || "Mobile Phone",
+    loginTimestamp: Date.now(),
+    lastPingTimestamp: Date.now(),
+  };
+
+  store.activeSessions[data.employeeCode] = sessionItem;
+  // Also index by uppercase code
+  store.activeSessions[data.employeeCode.toUpperCase()] = sessionItem;
+
+  saveCRMStore(store);
+  return sessionItem;
+};
+
+// Touch employee activity timestamp for Proof-of-Work tracking
+export const touchEmployeeActivityInStore = (
+  employeeCode: string,
+  description: string,
+  location?: { lat: number; lng: number; acc?: number }
+) => {
+  if (!employeeCode) return;
+  const store = getCRMStore();
+  const shift = findActiveShiftInStore(store, employeeCode);
+  if (!shift) return;
+
+  shift.lastActivityTimestamp = Date.now();
+  shift.lastActivityDescription = description;
+  if (location && typeof location.lat === "number" && typeof location.lng === "number") {
+    shift.latitude = location.lat;
+    shift.longitude = location.lng;
+    if (location.acc) shift.accuracyM = location.acc;
+  }
+
+  saveCRMStore(store);
+};
+
+// Check for Inactive on Duty staff (e.g. 2+ hours with no actions)
+export interface InactiveStaffItem {
+  employeeCode: string;
+  employeeName: string;
+  department: string;
+  checkInTime: string;
+  inactiveMinutes: number;
+  lastActivityDescription: string;
+  latitude?: number;
+  longitude?: number;
+  distanceM?: number;
+}
+
+export const getInactiveStaffList = (store: CRMStoreData, thresholdHours: number = 2): InactiveStaffItem[] => {
+  const list: InactiveStaffItem[] = [];
+  const now = Date.now();
+  const thresholdMs = thresholdHours * 60 * 60 * 1000;
+
+  if (!store.activeShifts) return list;
+
+  const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const processedCodes = new Set<string>();
+
+  Object.values(store.activeShifts).forEach((shift) => {
+    if (!shift || !shift.employeeCode || processedCodes.has(shift.employeeCode)) return;
+    processedCodes.add(shift.employeeCode);
+
+    if (shift.date === todayStr && shift.shiftState === "ACTIVE") {
+      const lastActionTs = shift.lastActivityTimestamp || shift.checkInTimestamp;
+      const diffMs = now - lastActionTs;
+      if (diffMs >= thresholdMs) {
+        list.push({
+          employeeCode: shift.employeeCode,
+          employeeName: shift.employeeName,
+          department: shift.department,
+          checkInTime: shift.checkInTime,
+          inactiveMinutes: Math.floor(diffMs / (1000 * 60)),
+          lastActivityDescription: shift.lastActivityDescription || "Check-In",
+          latitude: shift.latitude,
+          longitude: shift.longitude,
+          distanceM: shift.distanceM,
+        });
+      }
+    }
+  });
+
+  return list;
+};
+
 // Centralized Reactive Client Store with Real-Time Cross-Device Cloud Sync
 import { pushStoreToCloud, initCloudSync } from "./syncEngine";
 
@@ -194,6 +293,15 @@ export interface TaskItem {
   evidenceFile?: string;
 }
 
+export interface ActiveSessionItem {
+  sessionId: string;
+  employeeCode: string;
+  employeeName: string;
+  deviceName?: string;
+  loginTimestamp: number;
+  lastPingTimestamp: number;
+}
+
 export interface ActiveShiftState {
   employeeCode: string;
   employeeName: string;
@@ -209,6 +317,11 @@ export interface ActiveShiftState {
   totalBreakSeconds: number;
   date: string;
   distanceM: number;
+  latitude?: number;
+  longitude?: number;
+  accuracyM?: number;
+  lastActivityTimestamp?: number;
+  lastActivityDescription?: string;
 }
 
 export interface RoleItem {
@@ -305,6 +418,7 @@ export interface CRMStoreData {
   tasks: TaskItem[];
   attendance: AttendanceRecord[];
   activeShifts: Record<string, ActiveShiftState>;
+  activeSessions?: Record<string, ActiveSessionItem>;
   corrections: CorrectionItem[];
   leaves: LeaveRequest[];
   complaints: ComplaintItem[];
@@ -671,6 +785,7 @@ export const getCRMStore = (): CRMStoreData => {
       ...cleanBaselineStore,
       ...parsed,
       activeShifts: parsed.activeShifts || {},
+      activeSessions: parsed.activeSessions || {},
       orders: effectiveOrders,
       tasks: (parsed.tasks && parsed.tasks.length > 0) ? parsed.tasks : (cleanBaselineStore.tasks || []),
       attendance: (parsed.attendance && parsed.attendance.length > 0) ? parsed.attendance : (cleanBaselineStore.attendance || []),
@@ -1508,6 +1623,9 @@ export const checkInEmployeeInStore = (data: {
   department?: string;
   distanceM?: number;
   verifiedViaQR?: boolean;
+  latitude?: number;
+  longitude?: number;
+  accuracyM?: number;
 }) => {
   const store = getCRMStore();
   const allowedRadius = store.settings?.geofenceRadiusM || 10;
@@ -1528,6 +1646,11 @@ export const checkInEmployeeInStore = (data: {
     totalBreakSeconds: 0,
     date: today,
     distanceM: data.distanceM ?? 20,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    accuracyM: data.accuracyM,
+    lastActivityTimestamp: Date.now(),
+    lastActivityDescription: "Shift Check-In",
   };
 
   if (!store.activeShifts) store.activeShifts = {};

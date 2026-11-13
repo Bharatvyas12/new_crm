@@ -37,8 +37,9 @@ function parseTimeString(timeStr?: string): { hours: number; minutes: number } |
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isLoading } = useAuth();
-  const { t } = useLanguage();
+  const { user, isLoading, logout } = useAuth();
+  const { t, lang } = useLanguage();
+  const [sessionTerminated, setSessionTerminated] = useState(false);
 
   const [hasPendingTasks, setHasPendingTasks] = useState(false);
   const [hasUnclaimedOrders, setHasUnclaimedOrders] = useState(false);
@@ -50,7 +51,30 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
     }
   }, [user, isLoading, router]);
 
-  // Ensure WebPush subscription is active
+  // Single Device Session Lock Listener (Auto-logout if logged in on another device)
+  useEffect(() => {
+    if (!user || user.role === "ADMIN") return;
+    const empCode = user.employee_id || user.id;
+    if (!empCode) return;
+
+    const checkDeviceSession = () => {
+      const store = getCRMStore();
+      const activeSession = store.activeSessions?.[empCode] || store.activeSessions?.[empCode.toUpperCase()];
+      const localSessionId = user.sessionId || (typeof window !== "undefined" ? localStorage.getItem("wcrm_session_id") : null);
+
+      if (activeSession && localSessionId && activeSession.sessionId !== localSessionId) {
+        // Another phone logged in!
+        setSessionTerminated(true);
+        logout();
+      }
+    };
+
+    checkDeviceSession();
+    const unsubscribe = subscribeToCRMStore(checkDeviceSession);
+    return () => unsubscribe();
+  }, [user, logout]);
+
+    // Ensure WebPush subscription is active
   useEffect(() => {
     if (user?.employee_id || user?.id) {
       ensureWebPushSubscribed(user.employee_id || user.id);
@@ -227,6 +251,33 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
           })}
         </div>
       </nav>
+      {/* SINGLE DEVICE LOCK TERMINATION MODAL */}
+      {sessionTerminated && (
+        <div className="fixed inset-0 z-100 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-red-200">
+            <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto shadow-inner">
+              <span className="text-2xl">⚠️</span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                {lang === "hi" ? "सत्र समाप्त (Session Terminated)" : "Session Terminated"}
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                {lang === "hi"
+                  ? "आपका अकाउंट दूसरे मोबाइल पर खोला गया है। यह सेशन बंद कर दिया गया है।"
+                  : "Your account was logged in on another device. This session has been terminated."}
+              </p>
+            </div>
+            <button
+              onClick={() => router.replace("/")}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+            >
+              {lang === "hi" ? "लॉगिन पेज पर जाएं" : "Go to Login Page"}
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

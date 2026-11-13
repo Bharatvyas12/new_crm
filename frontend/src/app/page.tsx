@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { getCRMStore, EmployeeItem, CRMStoreData } from "@/lib/store";
+import { getCRMStore, EmployeeItem, CRMStoreData, registerActiveSessionInStore } from "@/lib/store";
 import { pullStoreFromCloud, getApiBaseUrl } from "@/lib/syncEngine";
 import { unlockAudio } from "@/lib/phoneNotifications";
 import { Lock, ArrowRight, ShieldCheck, AlertTriangle, RefreshCw } from "lucide-react";
@@ -195,6 +195,12 @@ export default function LoginPage() {
         isStandardPass;
 
       if (isPassCorrect) {
+        const session = registerActiveSessionInStore({
+          employeeCode: matched.code,
+          employeeName: matched.name,
+          deviceName: typeof navigator !== "undefined" ? (navigator.userAgent.includes("Mobile") ? "Mobile Phone" : "Browser") : "Device",
+        });
+
         login({
           id: matched.id,
           email: matched.email,
@@ -202,6 +208,7 @@ export default function LoginPage() {
           name: matched.name,
           role: "EMPLOYEE",
           employee_id: matched.code,
+          sessionId: session.sessionId,
         });
         setIsSubmitting(false);
         router.push("/app");
@@ -211,6 +218,12 @@ export default function LoginPage() {
       // Dynamic fallback for employees: E001 to E015 or newly provisioned employee codes
       if (isStandardPass) {
         const empCode = inputId.toUpperCase();
+        const session = registerActiveSessionInStore({
+          employeeCode: empCode,
+          employeeName: `Staff Member (${empCode})`,
+          deviceName: typeof navigator !== "undefined" ? (navigator.userAgent.includes("Mobile") ? "Mobile Phone" : "Browser") : "Device",
+        });
+
         login({
           id: `emp-${cleanInputId}`,
           email: `${cleanInputId}@crm.com`,
@@ -218,6 +231,7 @@ export default function LoginPage() {
           name: `Staff Member (${empCode})`,
           role: "EMPLOYEE",
           employee_id: empCode,
+          sessionId: session.sessionId,
         });
         setIsSubmitting(false);
         router.push("/app");
