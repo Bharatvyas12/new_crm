@@ -1,8 +1,9 @@
 "use client";
+import { QRScannerModal } from "@/components/QRScannerModal";
 
 import React, { useState, useEffect } from "react";
-import { Clock, Calendar, AlertCircle, CheckCircle2, ChevronRight, Plus } from "lucide-react";
-import { getCRMStore, subscribeToCRMStore, AttendanceRecord } from "@/lib/store";
+import { Clock, Calendar, Camera, CheckCircle, AlertCircle, CheckCircle2, ChevronRight, Plus } from "lucide-react";
+import { getCRMStore, subscribeToCRMStore, checkInEmployeeInStore, AttendanceRecord } from "@/lib/store";
 import { useAuth } from "@/lib/hooks/use-auth";
 
 export default function EmployeeAttendancePage() {
@@ -11,6 +12,8 @@ export default function EmployeeAttendancePage() {
   const empName = (user?.full_name || user?.name || "").toLowerCase().trim();
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [showScanner, setShowScanner] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = () => {
@@ -33,10 +36,26 @@ export default function EmployeeAttendancePage() {
 
   return (
     <div className="space-y-6 font-sans pb-16">
-      <div className="space-y-0.5">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">My Attendance</h1>
-        <p className="text-xs text-slate-500">History of worked hours, shift classifications, and overtime.</p>
+      <div className="flex items-center justify-between gap-2">
+        <div className="space-y-0.5 min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">My Attendance</h1>
+          <p className="text-xs text-slate-500 truncate">History of worked hours, shift classifications, and overtime.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowScanner(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer shrink-0 active:scale-95 transition-all"
+        >
+          <Camera size={14} />
+          <span>Scan QR</span>
+        </button>
       </div>
+      {toastMsg && (
+        <div className="p-3 bg-slate-900 text-white text-xs font-semibold rounded-xl flex items-center justify-between">
+          <span>{toastMsg}</span>
+          <CheckCircle size={14} className="text-emerald-400" />
+        </div>
+      )}
 
       {/* Monthly Summary Cards */}
       <div className="grid grid-cols-3 gap-3">
@@ -89,6 +108,20 @@ export default function EmployeeAttendancePage() {
           ))
         )}
       </div>
+      <QRScannerModal
+        isOpen={showScanner}
+        onClose={() => setShowScanner(false)}
+        onScanSuccess={(token) => {
+          checkInEmployeeInStore({
+            employeeCode: employeeCode || "E001",
+            employeeName: user?.full_name || user?.name || "Staff",
+            department: "Operations",
+            verifiedViaQR: true,
+          });
+          setToastMsg("✓ Check-In logged via Shop QR code!");
+          setTimeout(() => setToastMsg(null), 3500);
+        }}
+      />
     </div>
   );
 }

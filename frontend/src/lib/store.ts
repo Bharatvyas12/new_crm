@@ -719,7 +719,22 @@ export const cleanBaselineStore: CRMStoreData = {
   ledger: [],
   orders: (restoredOrdersData || []) as OrderItem[],
   tasks: [],
-  attendance: [],
+  attendance: [
+    {
+      id: "att-E001-2026-11-13",
+      employeeCode: "E001",
+      employeeName: "Bharat vyas",
+      department: "Operations",
+      date: "Nov 13, 2026",
+      checkIn: "13:35",
+      checkOut: "19:00",
+      workedHours: 5.4,
+      overtimeHours: 0,
+      classification: "HALF_DAY",
+      status: "Present",
+      distanceM: 10,
+    }
+  ],
   corrections: [],
   leaves: [],
   complaints: [],
@@ -798,7 +813,21 @@ export const getCRMStore = (): CRMStoreData => {
       activeSessions: parsed.activeSessions || {},
       orders: effectiveOrders,
       tasks: (parsed.tasks && parsed.tasks.length > 0) ? parsed.tasks : (cleanBaselineStore.tasks || []),
-      attendance: (parsed.attendance && parsed.attendance.length > 0) ? parsed.attendance : (cleanBaselineStore.attendance || []),
+      attendance: (() => {
+        const baselineAtt = (cleanBaselineStore.attendance || []) as AttendanceRecord[];
+        const attMap = new Map<string, AttendanceRecord>();
+        baselineAtt.forEach((a) => {
+          const key = `${(a.employeeCode || "").trim().toLowerCase()}_${(a.date || "").trim()}`;
+          attMap.set(key, a);
+        });
+        (parsed.attendance || []).forEach((a: any) => {
+          if (a && (a.employeeCode || a.employeeName) && a.date) {
+            const key = `${(a.employeeCode || a.employeeName || "").trim().toLowerCase()}_${(a.date || "").trim()}`;
+            attMap.set(key, { ...attMap.get(key), ...a });
+          }
+        });
+        return Array.from(attMap.values());
+      })(),
       corrections: parsed.corrections || [],
       complaints: parsed.complaints || [],
       advances: parsed.advances || [],

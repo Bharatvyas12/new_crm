@@ -272,7 +272,8 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           }
         }
 
-        // 3. Preserve attendance records
+        // 3. Preserve attendance records & sync to cloud
+        let hasLocalAttToSync = false;
         if (prevStore && Array.isArray(prevStore.attendance) && prevStore.attendance.length > 0) {
           const serverAttKeys = new Set((payload.data.attendance || []).map((a: any) => a.id || `${a.employeeCode}_${a.date}`));
           const validLocalAtt = prevStore.attendance.filter((a: any) => {
@@ -281,6 +282,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           });
           if (validLocalAtt.length > 0) {
             payload.data.attendance = [...(payload.data.attendance || []), ...validLocalAtt];
+            hasLocalAttToSync = true;
           }
         }
 
@@ -301,7 +303,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           }
         }
 
-        if (hasLocalOrdersToSync) {
+        if (hasLocalOrdersToSync || hasLocalAttToSync) {
           // Push merged state back to cloud so server catches up immediately
           setTimeout(() => {
             const fullStore = { ...prevStore, ...payload.data };
@@ -338,13 +340,36 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
               `🚨 ${newOrders.length} new dispatch order(s) available. Tap to view.`,
               "/app/orders"
             );
-          } else if (currentTasks.length > prevTasks.length) {
-            const diff = currentTasks.length - prevTasks.length;
-            sendSystemPhoneNotification(
-              "📋 New Task Assigned!",
-              `⏰ ${diff} new task(s) assigned to you. Tap to review.`,
-              "/app/tasks"
-            );
+          } else {
+            // Strictly notify ONLY if newly arrived task is assigned to this device's logged-in employee
+            try {
+              const rawAuth = localStorage.getItem("wcrm_auth_user");
+              if (rawAuth) {
+                const userObj = JSON.parse(rawAuth);
+                const myCode = (userObj?.employee_id || userObj?.id || "").trim().toUpperCase();
+                const myName = (userObj?.full_name || userObj?.name || "").trim().toLowerCase();
+                if (myCode || myName) {
+                  const prevTaskIds = new Set((prevTasks || []).map((t: any) => t.id));
+                  const myNewlyAssignedTasks = (currentTasks || []).filter((t: any) => {
+                    if (!t || !t.id || prevTaskIds.has(t.id)) return false;
+                    const tCode = (t.assigneeCode || "").trim().toUpperCase();
+                    const tName = (t.assignee || "").trim().toLowerCase();
+                    if (myCode && tCode && tCode === myCode) return true;
+                    if (myName && tName && tName === myName) return true;
+                    return false;
+                  });
+
+                  if (myNewlyAssignedTasks.length > 0) {
+                    playNotificationTune();
+                    sendSystemPhoneNotification(
+                      "📋 New Task Assigned to You!",
+                      `⏰ ${myNewlyAssignedTasks[0]?.title || "Task"} has been assigned to you. Tap to review.`,
+                      "/app/tasks"
+                    );
+                  }
+                }
+              }
+            } catch {}
           }
         }
 

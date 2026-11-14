@@ -1,4 +1,5 @@
 "use client";
+import { QRScannerModal } from "@/components/QRScannerModal";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -10,6 +11,7 @@ import {
   CheckCircle2,
   MapPin,
   QrCode,
+  Camera,
   Coffee,
   LogOut,
   ShieldCheck,
@@ -70,6 +72,7 @@ export default function EmployeeHomePage() {
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [qrInput, setQrInput] = useState("");
@@ -490,6 +493,50 @@ export default function EmployeeHomePage() {
       {/* Primary Phone Notification & Ringtone Setup Banner */}
       <PhoneNotificationBanner userCode={employeeCode} isEmployee={true} />
 
+      {/* Top Quick Status Row: Open Tasks & Available Orders (Right below Notification Banner) */}
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/app/tasks"
+          className="bg-white border border-slate-200/90 hover:border-blue-300 rounded-3xl p-4 shadow-xs transition-all block group cursor-pointer"
+        >
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            {lang === "hi" ? "खुले कार्य" : "Open Tasks"}
+          </span>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className="text-3xl font-extrabold text-slate-900 font-mono">{openTasksCount}</span>
+            <span className="text-xs text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">
+              {lang === "hi" ? "देखें →" : "View →"}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 truncate">
+            {lang === "hi" ? "आपको सौंपे गए कार्य" : "Assigned to you"}
+          </p>
+        </Link>
+
+        <Link
+          href="/app/orders"
+          className="bg-white border border-slate-200/90 hover:border-blue-300 rounded-3xl p-4 shadow-xs transition-all block group cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+              {lang === "hi" ? "उपलब्ध ऑर्डर्स" : "Available Orders"}
+            </span>
+            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded-full">
+              + {lang === "hi" ? "नया" : "New"}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className="text-3xl font-extrabold text-slate-900 font-mono">{availableOrdersCount}</span>
+            <span className="text-xs text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">
+              {lang === "hi" ? "पूल →" : "Pool →"}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 truncate">
+            {lang === "hi" ? "ऑर्डर क्लेम या नया जोड़ें" : "Claim or Broadcast"}
+          </p>
+        </Link>
+      </div>
+
       {/* Live Reminder Banners */}
       {availableOrdersCount > 0 && (
         <Link
@@ -708,48 +755,7 @@ export default function EmployeeHomePage() {
       </div>
 
       {/* Action Cards Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/app/tasks"
-          className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-xs hover:border-slate-300 transition-all block group cursor-pointer"
-        >
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            {lang === "hi" ? "खुले कार्य" : "Open Tasks"}
-          </span>
-          <div className="flex items-baseline justify-between mt-2">
-            <span className="text-3xl font-extrabold text-slate-900 font-mono">{openTasksCount}</span>
-            <span className="text-xs text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">
-              {lang === "hi" ? "देखें →" : "View →"}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1 truncate">
-            {lang === "hi" ? "आपको सौंपे गए कार्य" : "Assigned to you"}
-          </p>
-        </Link>
-
-        <Link
-          href="/app/orders"
-          className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-xs hover:border-slate-300 transition-all block group cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              {lang === "hi" ? "उपलब्ध ऑर्डर्स" : "Available Orders"}
-            </span>
-            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-              + {lang === "hi" ? "प्रसारण" : "Broadcast"}
-            </span>
-          </div>
-          <div className="flex items-baseline justify-between mt-2">
-            <span className="text-3xl font-extrabold text-slate-900 font-mono">{availableOrdersCount}</span>
-            <span className="text-xs text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">
-              {lang === "hi" ? "पूल / नया →" : "Pool / Create →"}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1 truncate">
-            {lang === "hi" ? "ऑर्डर क्लेम करें या नया जोड़ें" : "Claim or Broadcast new order"}
-          </p>
-        </Link>
-      </div>
+      
 
       {/* Quick Action Cards: Leaves, Complaints & Advances */}
       <div className="space-y-3 pt-2">
@@ -967,6 +973,16 @@ export default function EmployeeHomePage() {
                   className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 >
                   <span>🏢 {lang === "hi" ? "हाँ, मैं दुकान पर उपस्थित हूँ (सत्यापित करें)" : "I am Inside the Shop (Verify)"}</span>
+                </button>
+
+                {/* 📷 Scan Shop Dynamic QR Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowScannerModal(true)}
+                  className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <Camera size={15} />
+                  <span>{lang === "hi" ? "📷 दुकान QR कोड कैमरा से स्कैन करें" : "📷 Scan Shop QR Code with Camera"}</span>
                 </button>
               </div>
 
@@ -1392,6 +1408,17 @@ export default function EmployeeHomePage() {
           </div>
         </div>
       )}
+
+      {/* CAMERA QR SCANNER MODAL */}
+      <QRScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        onScanSuccess={(token) => {
+          setQrInput(token);
+          setGpsState("VERIFIED");
+          showToast(lang === "hi" ? "✓ दुकान QR कोड सफलतापूर्वक स्कैन हुआ!" : "✓ Shop QR successfully scanned!");
+        }}
+      />
     </div>
   );
 }

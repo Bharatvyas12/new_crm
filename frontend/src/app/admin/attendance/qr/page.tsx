@@ -18,7 +18,7 @@ import {
 
 export default function ShopQRPage() {
   const [token, setToken] = useState("");
-  const [timeLeft, setTimeLeft] = useState(45);
+  const [timeLeft, setTimeLeft] = useState(300);
   const [copied, setCopied] = useState(false);
   const [isKiosk, setIsKiosk] = useState(false);
 
@@ -28,7 +28,7 @@ export default function ShopQRPage() {
     const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newToken = `WCRM-SHOP-${timestamp}-${randomHex}`;
     setToken(newToken);
-    setTimeLeft(45);
+    setTimeLeft(300);
   };
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function ShopQRPage() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           generateNewToken();
-          return 45;
+          return 300;
         }
         return prev - 1;
       });
@@ -160,14 +160,14 @@ export default function ShopQRPage() {
               <Clock size={13} className="text-slate-400" />
               Auto-refreshes for replay protection
             </span>
-            <span className="font-mono font-bold text-blue-600">{timeLeft}s remaining</span>
+            <span className="font-mono font-bold text-blue-600">{Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")} remaining</span>
           </div>
 
           {/* Progress Bar */}
           <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-1000 ease-linear rounded-full"
-              style={{ width: `${(timeLeft / 45) * 100}%` }}
+              style={{ width: `${(timeLeft / 300) * 100}%` }}
             />
           </div>
 

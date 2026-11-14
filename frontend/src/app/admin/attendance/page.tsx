@@ -83,9 +83,23 @@ export default function AdminAttendanceRegisterPage() {
 
       // Build roster for selected date
       const dateRecords: AttendanceDisplayRecord[] = staffEmployees.map((emp) => {
-        const existing = atts.find(
-          (a) => a.employeeCode === emp.code && a.date === targetDateStr
-        );
+        const existing = atts.find((a) => {
+          const empCodeMatch = (a.employeeCode || "").trim().toLowerCase() === (emp.code || "").trim().toLowerCase();
+          const empNameMatch = (a.employeeName || "").trim().toLowerCase() === (emp.name || "").trim().toLowerCase();
+          if (!empCodeMatch && !empNameMatch) return false;
+
+          const aDate = (a.date || "").trim();
+          if (aDate === targetDateStr) return true;
+
+          const dt = new Date(aDate);
+          if (!isNaN(dt.getTime())) {
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, "0");
+            const d = String(dt.getDate()).padStart(2, "0");
+            if (`${y}-${m}-${d}` === selectedDate) return true;
+          }
+          return false;
+        });
         const shift = activeShifts[emp.code];
 
         const isOnBreak = shift?.shiftState === "ON_BREAK";
