@@ -38,6 +38,7 @@ import {
   CRMStoreData,
   ActiveShiftState,
   getInactiveStaffList,
+  getEmployeeLiveStatus,
 } from "@/lib/store";
 import { useLanguage } from "@/lib/i18n";
 
@@ -70,8 +71,29 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     loadEmployees();
-    const unsubscribe = subscribeToCRMStore(loadEmployees);
-    return () => unsubscribe();
+    const unsubscribe = subscribeToCRMStore(() => loadEmployees());
+
+    import("@/lib/syncEngine").then(async (mod) => {
+      const cloudData = await mod.pullStoreFromCloud(true);
+      if (cloudData) {
+        setStoreData(cloudData);
+        setEmployees(cloudData.employees || []);
+      }
+    });
+
+    const interval = setInterval(async () => {
+      const { pullStoreFromCloud } = await import("@/lib/syncEngine");
+      const cloudData = await pullStoreFromCloud(true);
+      if (cloudData) {
+        setStoreData(cloudData);
+        setEmployees(cloudData.employees || []);
+      }
+    }, 6000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
   const inactiveStaff = storeData ? getInactiveStaffList(storeData, 2) : [];
@@ -474,6 +496,7 @@ export default function EmployeesPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          setStoreData(getCRMStore());
                           setTrackingEmployee(emp);
                         }}
                         className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#1a73e8] border border-blue-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs shrink-0"
@@ -983,23 +1006,12 @@ export default function EmployeesPage() {
       {/* ON-DEMAND LIVE GPS TRACKING & FREE GOOGLE MAP MODAL */}
       {trackingEmployee && (() => {
         const emp = trackingEmployee;
-        const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-        
-        const activeShift: ActiveShiftState | undefined = storeData?.activeShifts
-          ? (storeData.activeShifts[emp.code] ||
-             storeData.activeShifts[emp.code.toUpperCase()] ||
-             Object.values(storeData.activeShifts).find((s) => s.employeeCode?.toUpperCase() === emp.code.toUpperCase() || s.employeeName?.toLowerCase().includes(emp.name?.toLowerCase())))
-          : undefined;
-
-        const isShiftToday = Boolean(activeShift && activeShift.date === todayStr);
-        const isCheckedIn = Boolean(isShiftToday && (activeShift?.shiftState === "ACTIVE" || activeShift?.shiftState === "ON_BREAK"));
-
-        const shopLat = storeData?.settings?.latitude || 26.893062;
-        const shopLng = storeData?.settings?.longitude || 74.76912;
-
-        const empLat = activeShift?.latitude || (isCheckedIn ? shopLat : null);
-        const empLng = activeShift?.longitude || (isCheckedIn ? shopLng : null);
-        const distM = activeShift?.distanceM != null ? Math.round(activeShift.distanceM) : 10;
+        const currentStore = storeData || getCRMStore();
+        const live = getEmployeeLiveStatus(currentStore, emp.code, emp.name);
+        const isCheckedIn = live.isOnDuty;
+        const empLat = live.latitude;
+        const empLng = live.longitude;
+        const distM = live.distanceM;
         const isIdle = inactiveCodesSet.has((emp.code || "").toUpperCase());
 
         return (
@@ -1040,7 +1052,7 @@ export default function EmployeesPage() {
                       <>
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         <span className="text-emerald-700">
-                          {activeShift?.shiftState === "ON_BREAK"
+                          {live.isOnBreak
                             ? (lang === "hi" ? "ब्रेक पर (On Break)" : "On Break")
                             : (lang === "hi" ? "कार्यरत (Active on Duty)" : "Active on Duty")}
                         </span>
@@ -1061,7 +1073,7 @@ export default function EmployeesPage() {
                     {lang === "hi" ? "हाज़िरी समय" : "ATTENDANCE TIME"}
                   </span>
                   <div className="font-mono font-bold text-slate-800">
-                    {isCheckedIn ? activeShift?.checkInTime : "—"}
+                    {isCheckedIn ? live.checkInTime : "—"}
                   </div>
                 </div>
               </div>
@@ -1099,8 +1111,8 @@ export default function EmployeesPage() {
                       <span className="font-mono">{empLat.toFixed(6)}, {empLng.toFixed(6)}</span>
                     </div>
                     <div className="text-[10px] text-blue-600 pt-0.5 border-t border-blue-100 flex items-center justify-between">
-                      <span>{lang === "hi" ? "सत्यापन माध्यम:" : "Captured via:"} {activeShift?.lastActivityDescription || "GPS Check-In"}</span>
-                      <span>Accuracy: ±{activeShift?.accuracyM || 10}m</span>
+                      <span>{lang === "hi" ? "सत्यापन माध्यम:" : "Captured via:"} {live.lastActivityDescription || "GPS Check-In"}</span>
+                      <span>Accuracy: ±{live.accuracyM || 10}m</span>
                     </div>
                   </div>
 

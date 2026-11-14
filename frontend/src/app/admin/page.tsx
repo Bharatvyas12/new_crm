@@ -40,6 +40,7 @@ import {
   autoCheckOutAllActiveEmployeesInStore,
   CRMStoreData,
   getInactiveStaffList,
+  getEmployeeLiveStatus,
 } from "@/lib/store";
 import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
 import { useLanguage } from "@/lib/i18n";
@@ -80,7 +81,22 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     refreshState();
     const unsubscribe = subscribeToCRMStore(refreshState);
-    return () => unsubscribe();
+
+    import("@/lib/syncEngine").then(async (mod) => {
+      const cloudData = await mod.pullStoreFromCloud(true);
+      if (cloudData) setStoreData(cloudData);
+    });
+
+    const interval = setInterval(async () => {
+      const { pullStoreFromCloud } = await import("@/lib/syncEngine");
+      const cloudData = await pullStoreFromCloud(true);
+      if (cloudData) setStoreData(cloudData);
+    }, 6000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
   const employees = storeData?.employees || [];
@@ -99,42 +115,30 @@ export default function AdminDashboardPage() {
   // Working staff members (excluding System Administrator)
   const staffMembers = employees.filter((emp) => !emp.code.includes("ADMIN") && emp.department !== "Management");
 
-  // Present employees: either in activeShifts (ACTIVE or ON_BREAK) or attendance today with status Present
+  // Present employees: unified check using getEmployeeLiveStatus
   const presentEmployees = staffMembers.filter((emp) => {
-    const shift = activeShifts[emp.code];
-    if (shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) return true;
-    const att = attendance.find((a) => a.employeeCode === emp.code && a.date === today);
-    return att && att.status === "Present";
+    if (!storeData) return false;
+    const live = getEmployeeLiveStatus(storeData, emp.code, emp.name);
+    return live.isOnDuty;
   }).map((emp) => {
-    const shift = activeShifts[emp.code];
-    const att = attendance.find((a) => a.employeeCode === emp.code && a.date === today);
-    
-    let hoursStr = "0.0h";
-    if (shift && shift.checkInTimestamp) {
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - shift.checkInTimestamp) / 1000) - (shift.totalBreakSeconds || 0));
-      hoursStr = `${(elapsedSec / 3600).toFixed(1)}h`;
-    } else if (att) {
-      hoursStr = `${att.workedHours}h`;
-    }
-
+    const live = getEmployeeLiveStatus(storeData!, emp.code, emp.name);
     return {
       name: emp.name,
       code: emp.code,
       department: emp.department,
-      checkIn: shift?.checkInTime || att?.checkIn || "—",
-      hours: hoursStr,
-      status: shift?.shiftState === "ON_BREAK" ? "On Break" : "Active Shift",
-      geofence: shift ? `${shift.distanceM}m from shop` : "Verified GPS",
+      checkIn: live.checkInTime,
+      hours: `${live.workedHours}h`,
+      status: live.isOnBreak ? "On Break" : "Active Shift",
+      geofence: `${live.distanceM}m from shop`,
       phone: emp.phone,
     };
   });
 
-  // Absent employees: registered active staff who have neither active shift nor attendance record today
+  // Absent employees: staff members who are not active on duty today
   const absentEmployees = staffMembers.filter((emp) => {
-    const shift = activeShifts[emp.code];
-    if (shift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK" || shift.shiftState === "COMPLETED")) return false;
-    const att = attendance.find((a) => a.employeeCode === emp.code && a.date === today);
-    return !att || att.status === "Absent";
+    if (!storeData) return true;
+    const live = getEmployeeLiveStatus(storeData, emp.code, emp.name);
+    return !live.isOnDuty;
   });
 
   const pendingLeaves = leaves.filter((l) => l.status === "PENDING");

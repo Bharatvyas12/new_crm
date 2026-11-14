@@ -27,6 +27,7 @@ import {
   getDynamicWorkedHours,
   AttendanceRecord,
   CRMStoreData,
+  getEmployeeLiveStatus,
 } from "@/lib/store";
 
 export interface AttendanceDisplayRecord extends AttendanceRecord {
@@ -119,84 +120,36 @@ export default function AdminAttendanceRegisterPage() {
           matchingAtts.find((a: any) => a.status === "Present" || a.status === "On Break" || (a.checkIn && a.checkIn !== "—")) ||
           matchingAtts[0];
 
-        // Flexible active shift lookup across code, upper, lower, and name
-        const shift =
-          activeShifts[emp.code] ||
-          activeShifts[emp.code.toUpperCase()] ||
-          activeShifts[emp.code.toLowerCase()] ||
-          Object.values(activeShifts).find((s: any) => {
-            if (!s) return false;
-            const sCode = (s.employeeCode || "").trim().toLowerCase();
-            const sName = (s.employeeName || "").trim().toLowerCase();
-            return sCode === empCodeTrim || (sName && empNameTrim && (sName === empNameTrim || sName.includes(empNameTrim) || empNameTrim.includes(sName)));
-          });
-
-        const isOnBreak = shift?.shiftState === "ON_BREAK";
-        const ongoingBreakSec = isOnBreak && shift?.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
-        const totalBreakSec = (shift?.totalBreakSeconds || 0) + ongoingBreakSec;
-        const excessBreakMins = Math.max(0, Math.round((totalBreakSec - allowedBreak * 60) / 60));
-
-        // 1. If target is TODAY: Check if on duty (active shift or unclosed checkIn)
+        // 1. If target is TODAY: Check live status using unified getEmployeeLiveStatus
         if (isTargetToday) {
-          const isShiftToday = Boolean(
-            shift && (
-              shift.date === todayStr ||
-              shift.date === targetDateStr ||
-              shift.date === selectedDate ||
-              String(shift.date || "").includes(todayStr.split(",")[0]) ||
-              (shift.checkInTimestamp && Math.abs(Date.now() - Number(shift.checkInTimestamp)) < 24 * 3600 * 1000)
-            )
-          );
-
-          const isOnDuty =
-            (shift && isShiftToday && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) ||
-            (existing && (existing.status === "Present" || existing.status === "On Break") && (existing.checkOut === "—" || !existing.checkOut || existing.checkOut === ""));
-
-          if (isOnDuty) {
-            const dynamic = getDynamicWorkedHours(
-              existing || {
-                id: `att-live-${emp.code}`,
-                employeeName: emp.name,
-                employeeCode: emp.code,
-                department: emp.department,
-                date: todayStr,
-                checkIn: shift?.checkInTime || "—",
-                checkOut: "—",
-                workedHours: 0,
-                overtimeHours: 0,
-                classification: "PARTIAL_DAY",
-                status: isOnBreak ? ("On Break" as any) : "Present",
-                distanceM: shift?.distanceM || 20,
-              },
-              shift
-            );
-
-            const hours = dynamic.hours;
-            const classification =
-              hours >= requiredDailyHours ? "FULL_DAY" : hours >= requiredDailyHours / 2 ? "HALF_DAY" : "PARTIAL_DAY";
-
+          const live = getEmployeeLiveStatus(store, emp.code, emp.name);
+          if (live.isOnDuty) {
             return {
               id: existing?.id || `att-live-${emp.code}`,
               employeeName: emp.name,
               employeeCode: emp.code,
               department: emp.department,
               date: todayStr,
-              checkIn: shift?.checkInTime || existing?.checkIn || "—",
-              checkOut: "—",
-              workedHours: hours,
+              checkIn: live.checkInTime,
+              checkOut: live.checkOutTime,
+              workedHours: live.workedHours,
               overtimeHours: 0,
-              classification: classification as any,
-              status: isOnBreak ? ("On Break" as any) : "Present",
-              distanceM: shift?.distanceM || existing?.distanceM || 20,
-              shiftState: shift?.shiftState,
-              breakStartTime: shift?.breakStartTime,
-              breakEndTime: shift?.breakEndTime,
-              totalBreakSeconds: totalBreakSec,
-              ongoingBreakSeconds: ongoingBreakSec,
-              excessBreakMinutes: excessBreakMins,
+              classification: live.classification,
+              status: live.isOnBreak ? ("On Break" as any) : "Present",
+              distanceM: live.distanceM,
+              shiftState: live.shiftState,
+              breakStartTime: live.shift?.breakStartTime,
+              breakEndTime: live.shift?.breakEndTime,
+              totalBreakSeconds: live.totalBreakSeconds,
+              ongoingBreakSeconds: live.ongoingBreakSeconds,
+              excessBreakMinutes: live.excessBreakMinutes,
             };
           }
         }
+
+        const shift: any = null;
+        const totalBreakSec = 0;
+        const excessBreakMins = 0;
 
         // 2. If not on duty today, but existing record exists for this date
         if (existing) {
@@ -266,7 +219,7 @@ export default function AdminAttendanceRegisterPage() {
     // Auto pull every 6 seconds to keep live attendance in real-time sync with mobile phones
     const liveSyncInterval = setInterval(async () => {
       const { pullStoreFromCloud } = await import("@/lib/syncEngine");
-      const cloudData = await pullStoreFromCloud(false);
+      const cloudData = await pullStoreFromCloud(true);
       if (cloudData) {
         loadRecords(cloudData);
       } else {

@@ -168,40 +168,47 @@ export const pushStoreToCloud = async (
 /**
  * Pulls the latest CRM store state from the cloud backend
  */
+let activePullPromise: Promise<CRMStoreData | null> | null = null;
+
 export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMStoreData | null> => {
-  if (typeof window === "undefined" || isSyncing) return null;
-  isSyncing = true;
-  try {
-    const baseUrl = getApiBaseUrl();
-    const localVersion = getLocalStoreVersion();
-    const localUpdatedAt = localStorage.getItem(UPDATED_AT_KEY) || "";
+  if (typeof window === "undefined") return null;
+  if (!force && activePullPromise) {
+    return activePullPromise;
+  }
 
-    if (!force) {
-      // Fast version check
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+  activePullPromise = (async () => {
+    isSyncing = true;
+    try {
+      const baseUrl = getApiBaseUrl();
+      const localVersion = getLocalStoreVersion();
+      const localUpdatedAt = localStorage.getItem(UPDATED_AT_KEY) || "";
 
-        const verRes = await fetch(`${baseUrl}/sync/version?_t=${Date.now()}`, {
-          cache: "no-store",
-          headers: NO_CACHE_HEADERS,
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
+      if (!force) {
+        // Fast version check
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000);
 
-        if (verRes.ok) {
-          isCloudOnline = true;
-          const verData = await verRes.json();
-          // If server version AND updated_at matches local, skip downloading full store
-          if (verData.version === localVersion && verData.updated_at === localUpdatedAt) {
-            isSyncing = false;
-            return null;
+          const verRes = await fetch(`${baseUrl}/sync/version?_t=${Date.now()}`, {
+            cache: "no-store",
+            headers: NO_CACHE_HEADERS,
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+
+          if (verRes.ok) {
+            isCloudOnline = true;
+            const verData = await verRes.json();
+            // If server version AND updated_at matches local, skip downloading full store
+            if (verData.version === localVersion && verData.updated_at === localUpdatedAt) {
+              isSyncing = false;
+              return null;
+            }
           }
+        } catch {
+          // Fall through to full fetch
         }
-      } catch {
-        // Fall through to full fetch
       }
-    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -427,8 +434,11 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
     console.debug("[SyncEngine] Pull failed:", err);
   } finally {
     isSyncing = false;
+    activePullPromise = null;
   }
   return null;
+  })();
+  return activePullPromise;
 };
 
 /**

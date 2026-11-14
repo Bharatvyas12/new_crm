@@ -826,6 +826,36 @@ export const getCRMStore = (): CRMStoreData => {
             attMap.set(key, { ...attMap.get(key), ...a });
           }
         });
+
+        // AUTO-HYDRATE: If parsed.activeShifts has any active shift from today, ensure a matching attendance record exists!
+        const parsedShifts = parsed.activeShifts || {};
+        const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+        Object.values(parsedShifts).forEach((s: any) => {
+          if (!s || typeof s !== "object") return;
+          const ts = Number(s.checkInTimestamp || 0);
+          const isRecent = ts > 0 && Math.abs(Date.now() - ts) < 24 * 3600 * 1000;
+          const isToday = isRecent || String(s.date || "").includes(todayStr.split(",")[0]);
+          if (isToday && (s.shiftState === "ACTIVE" || s.shiftState === "ON_BREAK")) {
+            const key = `${(s.employeeCode || "").trim().toLowerCase()}_${todayStr}`;
+            if (!attMap.has(key) || attMap.get(key)?.status !== "Present") {
+              attMap.set(key, {
+                id: `att-live-${s.employeeCode}`,
+                employeeCode: s.employeeCode,
+                employeeName: s.employeeName,
+                department: s.department || "Operations",
+                date: todayStr,
+                checkIn: s.checkInTime || "—",
+                checkOut: "—",
+                workedHours: 0,
+                overtimeHours: 0,
+                classification: "PARTIAL_DAY",
+                status: s.shiftState === "ON_BREAK" ? ("On Break" as any) : "Present",
+                distanceM: s.distanceM || 10,
+              });
+            }
+          }
+        });
+
         return Array.from(attMap.values());
       })(),
       corrections: parsed.corrections || [],
@@ -1803,13 +1833,30 @@ export const getDynamicWorkedHours = (
   };
 };
 
+export const isShiftForToday = (shift: any): boolean => {
+  if (!shift || typeof shift !== "object") return false;
+  const ts = Number(shift.checkInTimestamp || 0);
+  if (ts > 0) {
+    const isWithin24h = Math.abs(Date.now() - ts) < 24 * 3600 * 1000;
+    const isSameDate = new Date(ts).toDateString() === new Date().toDateString();
+    if (isSameDate || isWithin24h) return true;
+  }
+  const dateStr = String(shift.date || "").trim();
+  if (!dateStr) return false;
+  const todayLocale = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const todayISO = new Date().toISOString().split("T")[0];
+  if (dateStr === todayLocale || dateStr === todayISO || dateStr.includes(todayLocale.split(",")[0])) {
+    return true;
+  }
+  return false;
+};
+
 export const findActiveShiftInStore = (
   store: CRMStoreData,
   employeeCode: string,
   employeeName?: string
 ): ActiveShiftState | null => {
   if (!store.activeShifts) store.activeShifts = {};
-  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 
   const cleanCode = (employeeCode || "").trim().toLowerCase();
   const cleanName = (employeeName || "").trim().toLowerCase();
@@ -1817,20 +1864,20 @@ export const findActiveShiftInStore = (
   // 1. Direct exact key match
   if (employeeCode && store.activeShifts[employeeCode]) {
     const s = store.activeShifts[employeeCode];
-    if (s.date === today) return s;
+    if (isShiftForToday(s)) return s;
   }
 
   // 2. Case-insensitive key match
   for (const key of Object.keys(store.activeShifts)) {
     if (cleanCode && key.toLowerCase() === cleanCode) {
       const s = store.activeShifts[key];
-      if (s.date === today) return s;
+      if (isShiftForToday(s)) return s;
     }
   }
 
   // 3. Match employeeCode or employeeName property inside shift object
   for (const s of Object.values(store.activeShifts)) {
-    if (s.date === today) {
+    if (isShiftForToday(s)) {
       if (cleanCode && s.employeeCode && s.employeeCode.toLowerCase() === cleanCode) return s;
       if (cleanName && s.employeeName && s.employeeName.toLowerCase() === cleanName) return s;
     }
@@ -1843,15 +1890,153 @@ export const findActiveShiftInStore = (
       (cleanName && e.name.toLowerCase() === cleanName)
   );
   if (emp) {
-    if (store.activeShifts[emp.code] && store.activeShifts[emp.code].date === today) {
+    if (store.activeShifts[emp.code] && isShiftForToday(store.activeShifts[emp.code])) {
       return store.activeShifts[emp.code];
     }
-    if (store.activeShifts[emp.id] && store.activeShifts[emp.id].date === today) {
+    if (store.activeShifts[emp.id] && isShiftForToday(store.activeShifts[emp.id])) {
       return store.activeShifts[emp.id];
     }
   }
 
   return null;
+};
+
+export interface EmployeeLiveStatus {
+  isOnDuty: boolean;
+  isOnBreak: boolean;
+  shiftState: "NOT_STARTED" | "ACTIVE" | "ON_BREAK" | "COMPLETED";
+  shift: ActiveShiftState | null;
+  attendanceRecord: AttendanceRecord | null;
+  checkInTime: string;
+  checkOutTime: string;
+  workedHours: number;
+  workedDisplay: string;
+  totalBreakSeconds: number;
+  ongoingBreakSeconds: number;
+  excessBreakMinutes: number;
+  latitude: number;
+  longitude: number;
+  distanceM: number;
+  accuracyM?: number;
+  lastActivityDescription?: string;
+  classification: "FULL_DAY" | "HALF_DAY" | "PARTIAL_DAY" | "ABSENT";
+}
+
+export const getEmployeeLiveStatus = (
+  store: CRMStoreData,
+  employeeCode: string,
+  employeeName?: string
+): EmployeeLiveStatus => {
+  const shopLat = store.settings?.latitude || 26.893062;
+  const shopLng = store.settings?.longitude || 74.76912;
+  const allowedBreak = Number(store.settings?.allowedBreakMinutes) || 60;
+  const requiredDailyHours = Number(store.settings?.requiredDailyHours) || 10;
+
+  const cleanCode = (employeeCode || "").trim().toLowerCase();
+  const cleanName = (employeeName || "").trim().toLowerCase();
+
+  const shift = findActiveShiftInStore(store, employeeCode, employeeName);
+  const isTodayShift = Boolean(shift && isShiftForToday(shift));
+
+  const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const todayISO = new Date().toISOString().split("T")[0];
+
+  const matchingAtts = (store.attendance || []).filter((a) => {
+    if (!a) return false;
+    const aCode = (a.employeeCode || "").trim().toLowerCase();
+    const aName = (a.employeeName || "").trim().toLowerCase();
+    const matchesCodeOrName = (cleanCode && aCode === cleanCode) || (cleanName && aName === cleanName);
+    if (!matchesCodeOrName) return false;
+
+    const aDate = (a.date || "").trim();
+    if (aDate === todayStr || aDate === todayISO || aDate.includes(todayStr.split(",")[0])) return true;
+    const dt = new Date(aDate);
+    if (!isNaN(dt.getTime()) && dt.toDateString() === new Date().toDateString()) return true;
+    return false;
+  });
+
+  const existingAtt =
+    matchingAtts.find((a) => a.status === "Present" || a.status === "On Break" || (a.checkIn && a.checkIn !== "—")) ||
+    matchingAtts[0] ||
+    null;
+
+  const isOnBreak = Boolean(
+    (shift && isTodayShift && shift.shiftState === "ON_BREAK") ||
+    (existingAtt && existingAtt.status === "On Break")
+  );
+
+  const isOnDuty = Boolean(
+    (shift && isTodayShift && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) ||
+    (existingAtt && (existingAtt.status === "Present" || existingAtt.status === "On Break") && (!existingAtt.checkOut || existingAtt.checkOut === "—" || existingAtt.checkOut.trim() === ""))
+  );
+
+  const ongoingBreakSec = isOnBreak && shift?.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
+  const totalBreakSec = (shift?.totalBreakSeconds || 0) + ongoingBreakSec;
+  const excessBreakMins = Math.max(0, Math.round((totalBreakSec - allowedBreak * 60) / 60));
+
+  const checkInTime = shift?.checkInTime || existingAtt?.checkIn || "—";
+  const checkOutTime = shift?.checkOutTime || existingAtt?.checkOut || "—";
+
+  let workedHours = 0;
+  let workedDisplay = "0 hrs";
+
+  if (isOnDuty || (existingAtt && existingAtt.status === "Present")) {
+    const dynamic = getDynamicWorkedHours(
+      existingAtt || {
+        id: `att-live-${employeeCode}`,
+        employeeName: employeeName || "Employee",
+        employeeCode,
+        department: "Operations",
+        date: todayStr,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+        workedHours: 0,
+        overtimeHours: 0,
+        classification: "PARTIAL_DAY",
+        status: isOnBreak ? ("On Break" as any) : "Present",
+        distanceM: shift?.distanceM || 10,
+      },
+      shift
+    );
+    workedHours = dynamic.hours;
+    workedDisplay = dynamic.display;
+  } else if (existingAtt && existingAtt.workedHours > 0) {
+    workedHours = existingAtt.workedHours;
+    workedDisplay = `${workedHours} hrs`;
+  }
+
+  const classification = !isOnDuty && !existingAtt
+    ? "ABSENT"
+    : workedHours >= requiredDailyHours
+    ? "FULL_DAY"
+    : workedHours >= requiredDailyHours / 2
+    ? "HALF_DAY"
+    : "PARTIAL_DAY";
+
+  const latitude = shift?.latitude || shopLat;
+  const longitude = shift?.longitude || shopLng;
+  const distanceM = shift?.distanceM != null ? Math.round(shift.distanceM) : existingAtt?.distanceM != null ? Math.round(existingAtt.distanceM) : 10;
+
+  return {
+    isOnDuty,
+    isOnBreak,
+    shiftState: isOnBreak ? "ON_BREAK" : isOnDuty ? "ACTIVE" : shift?.shiftState || (existingAtt?.checkOut && existingAtt.checkOut !== "—" ? "COMPLETED" : "NOT_STARTED"),
+    shift: isTodayShift ? shift : null,
+    attendanceRecord: existingAtt,
+    checkInTime,
+    checkOutTime,
+    workedHours,
+    workedDisplay,
+    totalBreakSeconds: totalBreakSec,
+    ongoingBreakSeconds: ongoingBreakSec,
+    excessBreakMinutes: excessBreakMins,
+    latitude,
+    longitude,
+    distanceM,
+    accuracyM: shift?.accuracyM,
+    lastActivityDescription: shift?.lastActivityDescription || (isOnDuty ? "Active Duty GPS" : undefined),
+    classification,
+  };
 };
 
 export const getActiveShift = (employeeCode: string, employeeName?: string): ActiveShiftState | null => {
