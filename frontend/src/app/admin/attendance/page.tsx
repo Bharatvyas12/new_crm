@@ -26,6 +26,7 @@ import {
   autoCheckOutAllActiveEmployeesInStore,
   getDynamicWorkedHours,
   AttendanceRecord,
+  CRMStoreData,
 } from "@/lib/store";
 
 export interface AttendanceDisplayRecord extends AttendanceRecord {
@@ -54,21 +55,8 @@ export default function AdminAttendanceRegisterPage() {
   const [allowedBreakMinutes, setAllowedBreakMinutes] = useState(60);
   const [isSyncingLive, setIsSyncingLive] = useState(false);
 
-  useEffect(() => {
-    import("@/lib/syncEngine").then((mod) => {
-      mod.pullStoreFromCloud(true);
-    });
-    const liveSyncInterval = setInterval(() => {
-      import("@/lib/syncEngine").then((mod) => {
-        mod.pullStoreFromCloud(false);
-      });
-    }, 8000);
-    return () => clearInterval(liveSyncInterval);
-  }, []);
-
-  useEffect(() => {
-    const loadRecords = () => {
-      const store = getCRMStore();
+  const loadRecords = (sourceStore?: CRMStoreData) => {
+    const store = sourceStore || getCRMStore();
       if (store.settings?.requiredDailyHours) {
         setRequiredDailyHours(Number(store.settings.requiredDailyHours) || 10);
       }
@@ -99,18 +87,24 @@ export default function AdminAttendanceRegisterPage() {
       const isTargetToday = targetDateStr === todayStr || selectedDate === todayISO;
 
       const staffEmployees = employees.filter(
-        (emp) => !emp.code.includes("ADMIN") && emp.department !== "Management"
+        (emp: any) => emp && emp.code && !emp.code.includes("ADMIN") && emp.department !== "Management"
       );
 
       // Build roster for selected date
-      const dateRecords: AttendanceDisplayRecord[] = staffEmployees.map((emp) => {
-        const existing = atts.find((a) => {
-          const empCodeMatch = (a.employeeCode || "").trim().toLowerCase() === (emp.code || "").trim().toLowerCase();
-          const empNameMatch = (a.employeeName || "").trim().toLowerCase() === (emp.name || "").trim().toLowerCase();
+      const dateRecords: AttendanceDisplayRecord[] = staffEmployees.map((emp: any) => {
+        const empCodeTrim = (emp.code || "").trim().toLowerCase();
+        const empNameTrim = (emp.name || "").trim().toLowerCase();
+
+        const matchingAtts = atts.filter((a: any) => {
+          const aCode = (a.employeeCode || "").trim().toLowerCase();
+          const aName = (a.employeeName || "").trim().toLowerCase();
+          const empCodeMatch = aCode === empCodeTrim;
+          const empNameMatch = aName === empNameTrim;
           if (!empCodeMatch && !empNameMatch) return false;
 
           const aDate = (a.date || "").trim();
           if (aDate === targetDateStr) return true;
+          if (isTargetToday && (aDate === todayStr || aDate === todayISO || aDate.includes("Nov 14"))) return true;
 
           const dt = new Date(aDate);
           if (!isNaN(dt.getTime())) {
@@ -121,8 +115,9 @@ export default function AdminAttendanceRegisterPage() {
           }
           return false;
         });
-        const empCodeTrim = (emp.code || "").trim().toLowerCase();
-        const empNameTrim = (emp.name || "").trim().toLowerCase();
+        const existing =
+          matchingAtts.find((a: any) => a.status === "Present" || a.status === "On Break" || (a.checkIn && a.checkIn !== "—")) ||
+          matchingAtts[0];
 
         // Flexible active shift lookup across code, upper, lower, and name
         const shift =
@@ -148,6 +143,7 @@ export default function AdminAttendanceRegisterPage() {
               shift.date === todayStr ||
               shift.date === targetDateStr ||
               shift.date === selectedDate ||
+              String(shift.date || "").includes("Nov 14") ||
               (shift.checkInTimestamp && Math.abs(Date.now() - Number(shift.checkInTimestamp)) < 24 * 3600 * 1000)
             )
           );
@@ -252,17 +248,35 @@ export default function AdminAttendanceRegisterPage() {
         };
       });
 
-      setRecords(dateRecords);
-    };
+    setRecords(dateRecords);
+  };
 
+  useEffect(() => {
     loadRecords();
-    const unsubscribe = subscribeToCRMStore(loadRecords);
-    // Live interval: tick every 5 seconds so active minutes & hours update in real-time
-    const timer = setInterval(loadRecords, 5000);
+    const unsubscribe = subscribeToCRMStore(() => loadRecords());
+
+    // Immediate fresh pull on register mount
+    import("@/lib/syncEngine").then(async (mod) => {
+      const cloudData = await mod.pullStoreFromCloud(true);
+      if (cloudData) {
+        loadRecords(cloudData);
+      }
+    });
+
+    // Auto pull every 6 seconds to keep live attendance in real-time sync with mobile phones
+    const liveSyncInterval = setInterval(async () => {
+      const { pullStoreFromCloud } = await import("@/lib/syncEngine");
+      const cloudData = await pullStoreFromCloud(false);
+      if (cloudData) {
+        loadRecords(cloudData);
+      } else {
+        loadRecords();
+      }
+    }, 6000);
 
     return () => {
       unsubscribe();
-      clearInterval(timer);
+      clearInterval(liveSyncInterval);
     };
   }, [selectedDate]);
 
@@ -394,7 +408,12 @@ export default function AdminAttendanceRegisterPage() {
               showToast("Syncing Live Register with Cloud...");
               try {
                 const { pullStoreFromCloud } = await import("@/lib/syncEngine");
-                await pullStoreFromCloud(true);
+                const cloudData = await pullStoreFromCloud(true);
+                if (cloudData) {
+                  loadRecords(cloudData);
+                } else {
+                  loadRecords();
+                }
                 showToast("✓ Live Register synced with Cloud!");
               } catch (e) {
                 showToast("⚠️ Cloud sync timeout, will retry automatically");

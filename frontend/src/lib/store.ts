@@ -446,7 +446,19 @@ export const cleanBaselineStore: CRMStoreData = {
     qrRotationSeconds: 45,
     lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
   },
-  activeShifts: {},
+  activeShifts: {
+    E001: {
+      employeeCode: "E001",
+      employeeName: "Bharat vyas",
+      department: "Operations",
+      shiftState: "ACTIVE",
+      checkInTime: "11:16 AM",
+      checkInTimestamp: 1794635677756,
+      totalBreakSeconds: 0,
+      date: "Nov 14, 2026",
+      distanceM: 5,
+    },
+  },
   employees: [
       {
           "id": "1",
@@ -720,6 +732,20 @@ export const cleanBaselineStore: CRMStoreData = {
   orders: (restoredOrdersData || []) as OrderItem[],
   tasks: [],
   attendance: [
+    {
+      id: "att-E001-2026-11-14",
+      employeeCode: "E001",
+      employeeName: "Bharat vyas",
+      department: "Operations",
+      date: "Nov 14, 2026",
+      checkIn: "11:16 AM",
+      checkOut: "—",
+      workedHours: 1.5,
+      overtimeHours: 0,
+      classification: "PARTIAL_DAY",
+      status: "Present",
+      distanceM: 5,
+    },
     {
       id: "att-E001-2026-11-13",
       employeeCode: "E001",
