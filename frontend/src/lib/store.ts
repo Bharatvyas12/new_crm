@@ -437,7 +437,7 @@ export const cleanBaselineStore: CRMStoreData = {
     address: "near tehsil office , kuchaman road , parbatsar 341512",
     latitude: 26.893062,
     longitude: 74.76912,
-    geofenceRadiusM: 80,
+    geofenceRadiusM: 10,
     shiftStart: "08:00",
     shiftEnd: "20:00",
     requiredDailyHours: 12,
@@ -772,10 +772,20 @@ export const getCRMStore = (): CRMStoreData => {
       (o: any) => o && o.id && !deletedSet.has(o.id) && !o.isDeleted
     );
 
-    // If local storage has 0 orders but clean baseline has the 138 restored orders, auto-fill them!
-    const effectiveOrders = (filteredOrders.length > 0)
-      ? filteredOrders
-      : (cleanBaselineStore.orders || []);
+        // Merge baseline 138 orders with local orders so historical data is NEVER lost on any device!
+    const baselineOrders = (cleanBaselineStore.orders || []) as OrderItem[];
+    const orderMap = new Map<string, OrderItem>();
+    baselineOrders.forEach((o: OrderItem) => {
+      if (o && o.id && !deletedSet.has(o.id) && !o.isDeleted) {
+        orderMap.set(o.id, o);
+      }
+    });
+    filteredOrders.forEach((o: any) => {
+      if (o && o.id && !deletedSet.has(o.id) && !o.isDeleted) {
+        orderMap.set(o.id, { ...orderMap.get(o.id), ...o });
+      }
+    });
+    const effectiveOrders = Array.from(orderMap.values());
 
     const effectiveEmployees = (Array.isArray(parsed.employees) && parsed.employees.length > 1)
       ? parsed.employees

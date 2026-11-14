@@ -20,8 +20,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { NotificationCenter } from "@/components/NotificationCenter";
 import {
   getCRMStore,
   submitTaskEvidenceInStore,
@@ -159,26 +157,20 @@ export default function EmployeeTasksPage() {
         </motion.div>
       )}
 
-      <div>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              {lang === "hi" ? "कार्य और कार्यप्रणाली (Tasks)" : "Work Tasks & SOPs"}
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {lang === "hi"
-                ? `विशेष रूप से ${user?.full_name || "आपको"} सौंपे गए कार्य`
-                : `Tasks assigned specifically to you (${user?.full_name || "Employee"})`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <NotificationCenter isEmployee={true} />
-            <LanguageSwitcher />
-            <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[11px] rounded-full border border-blue-200 shrink-0">
-              {tasks.length} {lang === "hi" ? "कार्य" : "Assigned"}
-            </span>
-          </div>
+      <div className="pt-1">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            {lang === "hi" ? "कार्य और कार्यप्रणाली (Tasks)" : "Work Tasks & SOPs"}
+          </h1>
+          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[11px] rounded-full border border-blue-200 shrink-0">
+            {tasks.length} {lang === "hi" ? "कार्य" : "Assigned"}
+          </span>
         </div>
+        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+          {lang === "hi"
+            ? `विशेष रूप से ${user?.full_name || "आपको"} सौंपे गए कार्य`
+            : `Tasks assigned specifically to you (${user?.full_name || "Employee"})`}
+        </p>
       </div>
 
       <div className="space-y-3">

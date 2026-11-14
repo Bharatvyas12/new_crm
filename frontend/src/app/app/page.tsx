@@ -285,10 +285,8 @@ export default function EmployeeHomePage() {
 
         setDistanceMeters(realDistMeters);
 
-        // Account for device satellite drift and indoor warehouse accuracy
-        const effectiveRadius = Math.max(allowedRadius, 80);
-        const maxAllowedWithTolerance = effectiveRadius + Math.max(acc, 40);
-        if (realDistMeters <= maxAllowedWithTolerance || realDistMeters <= 100) {
+        // Strict 10m geofence verification requested by client
+        if (realDistMeters <= allowedRadius) {
           setGpsState("VERIFIED");
         } else {
           setGpsState("OUTSIDE_GEOFENCE");
@@ -317,7 +315,7 @@ export default function EmployeeHomePage() {
 
   const handleConfirmCheckIn = () => {
     const isQrValid = qrInput.trim().toUpperCase() === "SHOP-CTR-9921" || qrInput.trim().length >= 4;
-    const isGpsValid = gpsState === "VERIFIED" && distanceMeters !== null && distanceMeters <= (settingsGeofenceRadius + Math.max(gpsAccuracy || 20, 80));
+    const isGpsValid = gpsState === "VERIFIED" && distanceMeters !== null && distanceMeters <= settingsGeofenceRadius;
 
     if (!isQrValid && !isGpsValid) {
       alert(`⚠️ चेक-इन सत्यापन आवश्यक है!\n\nदुकान परिसर में उपस्थित होकर 'Auto-Fill Token' बटन पर क्लिक करें या GPS री-चेक करें।`);

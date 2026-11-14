@@ -34,8 +34,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { NotificationCenter } from "@/components/NotificationCenter";
 import {
   getCRMStore,
   getDeletedOrderIds,
@@ -539,26 +537,15 @@ export default function EmployeeOrdersPage() {
         </motion.div>
       )}
 
-      <div>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              {lang === "hi" ? "ऑर्डर डिस्पैच एवं डिलीवरी" : "Order Dispatch & Delivery"}
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {lang === "hi"
-                ? "लाइव दुकान ऑर्डर पूल, तारीख अनुसार फिल्टर और मल्टीपल पर्ची सपोर्ट"
-                : "Real-time order pool, date-wise filtering & multi-slip support"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <NotificationCenter isEmployee={true} />
-            <LanguageSwitcher />
-            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold text-[11px] rounded-full border border-emerald-200 shrink-0">
-              {lang === "hi" ? "लाइव सिंक" : "Live Synced"}
-            </span>
-          </div>
-        </div>
+      <div className="pt-1">
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          {lang === "hi" ? "ऑर्डर डिस्पैच एवं डिलीवरी" : "Order Dispatch & Delivery"}
+        </h1>
+        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+          {lang === "hi"
+            ? "लाइव दुकान ऑर्डर पूल, तारीख अनुसार फिल्टर और मल्टीपल पर्ची सपोर्ट"
+            : "Real-time order pool, date-wise filtering & multi-slip support"}
+        </p>
       </div>
 
       {/* Top Action Bar with + Broadcast Order Button */}
