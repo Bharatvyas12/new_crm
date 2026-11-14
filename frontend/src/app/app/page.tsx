@@ -325,10 +325,13 @@ export default function EmployeeHomePage() {
       return;
     }
 
+    const effectiveCode = currentEmployeeProfile?.code || employeeCode;
+    const effectiveName = currentEmployeeProfile?.name || employeeName;
+
     const shift = checkInEmployeeInStore({
-      employeeCode,
-      employeeName,
-      department: "Operations",
+      employeeCode: effectiveCode,
+      employeeName: effectiveName,
+      department: currentEmployeeProfile?.department || "Operations",
       distanceM: distanceMeters || 15,
       verifiedViaQR: isQrValid,
       latitude: userCoords?.lat,
@@ -340,14 +343,25 @@ export default function EmployeeHomePage() {
     setSecondsElapsed(1);
     setShowCheckInModal(false);
     showToast(`✓ Check-In confirmed at ${shift.checkInTime} (${isQrValid ? "Shop Counter Verified" : `GPS Verified: ${distanceMeters}m`})!`);
+
+    // Immediately push live check-in to Cloud DB so Admin Register updates instantly
+    import("@/lib/syncEngine").then((mod) => {
+      const { getCRMStore } = require("@/lib/store");
+      mod.pushStoreToCloud(getCRMStore());
+    });
   };
 
   const handleStartBreak = () => {
     const effectiveCode = currentEmployeeProfile?.code || employeeCode;
-    const success = startBreakInStore(effectiveCode, employeeName);
+    const effectiveName = currentEmployeeProfile?.name || employeeName;
+    const success = startBreakInStore(effectiveCode, effectiveName);
     if (success) {
       setShiftState("ON_BREAK");
       showToast(lang === "hi" ? "ब्रेक शुरू हुआ। ब्रेक टाइमर चालू है।" : "Break started. Break timer ticking.");
+      import("@/lib/syncEngine").then((mod) => {
+        const { getCRMStore } = require("@/lib/store");
+        mod.pushStoreToCloud(getCRMStore());
+      });
     } else {
       showToast(lang === "hi" ? "ब्रेक शुरू नहीं हो सका। कृपया पहले चेक-इन करें।" : "Could not start break. Please check in first.");
     }
@@ -355,20 +369,30 @@ export default function EmployeeHomePage() {
 
   const handleEndBreak = () => {
     const effectiveCode = currentEmployeeProfile?.code || employeeCode;
-    const success = endBreakInStore(effectiveCode, employeeName);
+    const effectiveName = currentEmployeeProfile?.name || employeeName;
+    const success = endBreakInStore(effectiveCode, effectiveName);
     if (success) {
       setShiftState("ACTIVE");
       showToast(lang === "hi" ? "ब्रेक समाप्त हुआ। कार्य पुनः शुरू हुआ।" : "Break ended. Resuming active work shift.");
+      import("@/lib/syncEngine").then((mod) => {
+        const { getCRMStore } = require("@/lib/store");
+        mod.pushStoreToCloud(getCRMStore());
+      });
     }
   };
 
   const handleCheckOut = () => {
     const effectiveCode = currentEmployeeProfile?.code || employeeCode;
-    const shift = checkOutEmployeeInStore(effectiveCode, employeeName);
+    const effectiveName = currentEmployeeProfile?.name || employeeName;
+    const shift = checkOutEmployeeInStore(effectiveCode, effectiveName);
     if (shift) {
       setShiftState("COMPLETED");
       if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);
       showToast(`✓ Checked out at ${shift.checkOutTime}. Full day attendance recorded!`);
+      import("@/lib/syncEngine").then((mod) => {
+        const { getCRMStore } = require("@/lib/store");
+        mod.pushStoreToCloud(getCRMStore());
+      });
     }
   };
 

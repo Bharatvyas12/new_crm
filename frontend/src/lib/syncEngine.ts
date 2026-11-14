@@ -287,7 +287,13 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         }
 
         // 4. Preserve active shifts
+        let hasLocalShiftToSync = false;
         if (prevStore && prevStore.activeShifts && Object.keys(prevStore.activeShifts).length > 0) {
+          const serverShiftKeys = new Set(Object.keys(payload.data.activeShifts || {}));
+          const missingShifts = Object.entries(prevStore.activeShifts).filter(([k]) => !serverShiftKeys.has(k));
+          if (missingShifts.length > 0) {
+            hasLocalShiftToSync = true;
+          }
           payload.data.activeShifts = {
             ...prevStore.activeShifts,
             ...(payload.data.activeShifts || {}),
@@ -303,7 +309,7 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           }
         }
 
-        if (hasLocalOrdersToSync || hasLocalAttToSync) {
+        if (hasLocalOrdersToSync || hasLocalAttToSync || hasLocalShiftToSync) {
           // Push merged state back to cloud so server catches up immediately
           setTimeout(() => {
             const fullStore = { ...prevStore, ...payload.data };

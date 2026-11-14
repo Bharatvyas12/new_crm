@@ -553,6 +553,7 @@ async def save_store_to_postgres() -> bool:
 
 def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
     today_str = datetime.now().strftime("%b %d, %Y")
+    now_ts = time.time() * 1000
     if not isinstance(existing_shifts, dict):
         existing_shifts = {}
     if not isinstance(incoming_shifts, dict):
@@ -561,22 +562,30 @@ def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
     merged = dict(existing_shifts)
     for emp_code, shift in incoming_shifts.items():
         if isinstance(shift, dict):
-            # Only accept shifts that belong to today
-            if shift.get("date") == today_str:
+            shift_date = str(shift.get("date") or "")
+            shift_ts = float(shift.get("checkInTimestamp") or 0)
+            is_recent = shift_ts > 0 and (now_ts - shift_ts < 24 * 3600 * 1000)
+            is_today = (shift_date == today_str) or (today_str in shift_date) or is_recent
+
+            if is_today:
                 existing = merged.get(emp_code)
                 if existing and isinstance(existing, dict):
-                    incoming_ts = shift.get("checkInTimestamp", 0)
-                    existing_ts = existing.get("checkInTimestamp", 0)
-                    if incoming_ts >= existing_ts:
+                    existing_ts = float(existing.get("checkInTimestamp") or 0)
+                    if shift_ts >= existing_ts:
                         merged[emp_code] = shift
                 else:
                     merged[emp_code] = shift
 
-    # Filter out any shifts from past days so they never linger into today
+    # Keep shifts that belong to today or were checked in within 24 hours
     cleaned = {}
     for emp_code, shift in merged.items():
-        if isinstance(shift, dict) and shift.get("date") == today_str:
-            cleaned[emp_code] = shift
+        if isinstance(shift, dict):
+            shift_date = str(shift.get("date") or "")
+            shift_ts = float(shift.get("checkInTimestamp") or 0)
+            is_recent = shift_ts > 0 and (now_ts - shift_ts < 24 * 3600 * 1000)
+            is_today = (shift_date == today_str) or (today_str in shift_date) or is_recent
+            if is_today:
+                cleaned[emp_code] = shift
     return cleaned
 
 

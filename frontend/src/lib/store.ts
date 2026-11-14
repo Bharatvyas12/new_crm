@@ -1693,11 +1693,16 @@ export const checkInEmployeeInStore = (data: {
   };
 
   if (!store.activeShifts) store.activeShifts = {};
+  const upperCode = (data.employeeCode || "").trim().toUpperCase();
   store.activeShifts[data.employeeCode] = activeShift;
+  if (upperCode) store.activeShifts[upperCode] = activeShift;
 
-  // Sync to attendance record
+  // Sync to attendance record with case-insensitive matching
   const existingIndex = store.attendance.findIndex(
-    (a) => a.employeeCode === data.employeeCode && a.date === today
+    (a) =>
+      ((a.employeeCode || "").trim().toLowerCase() === (data.employeeCode || "").trim().toLowerCase() ||
+       (a.employeeName || "").trim().toLowerCase() === (data.employeeName || "").trim().toLowerCase()) &&
+      (a.date === today || (a.date && a.date.includes(today.split(",")[0])))
   );
 
   const attRecord: AttendanceRecord = {

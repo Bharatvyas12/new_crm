@@ -37,14 +37,34 @@ export interface AttendanceDisplayRecord extends AttendanceRecord {
   excessBreakMinutes?: number;
 }
 
+const getLocalDateString = (d: Date = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 export default function AdminAttendanceRegisterPage() {
   const [records, setRecords] = useState<AttendanceDisplayRecord[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [filter, setFilter] = useState("ALL");
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [requiredDailyHours, setRequiredDailyHours] = useState(10);
   const [allowedBreakMinutes, setAllowedBreakMinutes] = useState(60);
+  const [isSyncingLive, setIsSyncingLive] = useState(false);
+
+  useEffect(() => {
+    import("@/lib/syncEngine").then((mod) => {
+      mod.pullStoreFromCloud(true);
+    });
+    const liveSyncInterval = setInterval(() => {
+      import("@/lib/syncEngine").then((mod) => {
+        mod.pullStoreFromCloud(false);
+      });
+    }, 8000);
+    return () => clearInterval(liveSyncInterval);
+  }, []);
 
   useEffect(() => {
     const loadRecords = () => {
@@ -60,7 +80,7 @@ export default function AdminAttendanceRegisterPage() {
       const activeShifts = store.activeShifts || {};
 
       // Parse selected date safely
-      const [y, m, d] = (selectedDate || new Date().toISOString().split("T")[0])
+      const [y, m, d] = (selectedDate || getLocalDateString())
         .split("-")
         .map(Number);
       const targetDateObj = new Date(y, m - 1, d);
@@ -75,7 +95,8 @@ export default function AdminAttendanceRegisterPage() {
         day: "2-digit",
         year: "numeric",
       });
-      const isTargetToday = targetDateStr === todayStr;
+      const todayISO = getLocalDateString();
+      const isTargetToday = targetDateStr === todayStr || selectedDate === todayISO;
 
       const staffEmployees = employees.filter(
         (emp) => !emp.code.includes("ADMIN") && emp.department !== "Management"
@@ -100,7 +121,20 @@ export default function AdminAttendanceRegisterPage() {
           }
           return false;
         });
-        const shift = activeShifts[emp.code];
+        const empCodeTrim = (emp.code || "").trim().toLowerCase();
+        const empNameTrim = (emp.name || "").trim().toLowerCase();
+
+        // Flexible active shift lookup across code, upper, lower, and name
+        const shift =
+          activeShifts[emp.code] ||
+          activeShifts[emp.code.toUpperCase()] ||
+          activeShifts[emp.code.toLowerCase()] ||
+          Object.values(activeShifts).find((s: any) => {
+            if (!s) return false;
+            const sCode = (s.employeeCode || "").trim().toLowerCase();
+            const sName = (s.employeeName || "").trim().toLowerCase();
+            return sCode === empCodeTrim || (sName && empNameTrim && (sName === empNameTrim || sName.includes(empNameTrim) || empNameTrim.includes(sName)));
+          });
 
         const isOnBreak = shift?.shiftState === "ON_BREAK";
         const ongoingBreakSec = isOnBreak && shift?.breakStartedAt ? Math.floor((Date.now() - shift.breakStartedAt) / 1000) : 0;
@@ -109,9 +143,18 @@ export default function AdminAttendanceRegisterPage() {
 
         // 1. If target is TODAY: Check if on duty (active shift or unclosed checkIn)
         if (isTargetToday) {
+          const isShiftToday = Boolean(
+            shift && (
+              shift.date === todayStr ||
+              shift.date === targetDateStr ||
+              shift.date === selectedDate ||
+              (shift.checkInTimestamp && Math.abs(Date.now() - Number(shift.checkInTimestamp)) < 24 * 3600 * 1000)
+            )
+          );
+
           const isOnDuty =
-            (shift && shift.date === todayStr && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) ||
-            (existing && existing.status === "Present" && (existing.checkOut === "—" || !existing.checkOut));
+            (shift && isShiftToday && (shift.shiftState === "ACTIVE" || shift.shiftState === "ON_BREAK")) ||
+            (existing && (existing.status === "Present" || existing.status === "On Break") && (existing.checkOut === "—" || !existing.checkOut || existing.checkOut === ""));
 
           if (isOnDuty) {
             const dynamic = getDynamicWorkedHours(
@@ -309,9 +352,9 @@ export default function AdminAttendanceRegisterPage() {
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setSelectedDate(new Date().toISOString().split("T")[0])}
+              onClick={() => setSelectedDate(getLocalDateString())}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedDate === new Date().toISOString().split("T")[0]
+                selectedDate === getLocalDateString()
                   ? "bg-[#1a73e8] text-white shadow-xs"
                   : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
               }`}
@@ -323,10 +366,10 @@ export default function AdminAttendanceRegisterPage() {
               onClick={() => {
                 const yest = new Date();
                 yest.setDate(yest.getDate() - 1);
-                setSelectedDate(yest.toISOString().split("T")[0]);
+                setSelectedDate(getLocalDateString(yest));
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedDate !== new Date().toISOString().split("T")[0]
+                selectedDate !== getLocalDateString()
                   ? "bg-slate-800 text-white shadow-xs"
                   : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
               }`}
@@ -342,6 +385,29 @@ export default function AdminAttendanceRegisterPage() {
           >
             <span>Allowed Break: {allowedBreakMinutes}m</span>
           </Link>
+
+          <button
+            type="button"
+            disabled={isSyncingLive}
+            onClick={async () => {
+              setIsSyncingLive(true);
+              showToast("Syncing Live Register with Cloud...");
+              try {
+                const { pullStoreFromCloud } = await import("@/lib/syncEngine");
+                await pullStoreFromCloud(true);
+                showToast("✓ Live Register synced with Cloud!");
+              } catch (e) {
+                showToast("⚠️ Cloud sync timeout, will retry automatically");
+              } finally {
+                setIsSyncingLive(false);
+              }
+            }}
+            title="Pull latest live check-ins from Cloud"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={isSyncingLive ? "animate-spin" : ""} />
+            <span>{isSyncingLive ? "Syncing..." : "Sync Live Register"}</span>
+          </button>
 
           <button
             type="button"
