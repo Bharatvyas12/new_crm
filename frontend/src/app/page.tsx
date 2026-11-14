@@ -307,8 +307,7 @@ export default function LoginPage() {
                 <label className="text-xs font-semibold text-slate-300">
                   {lang === "hi" ? "कर्मचारी कोड / नाम / मोबाइल" : "Employee Code / Name / Phone"}
                 </label>
-                <span className="text-[10px] text-blue-400 font-medium">Auto-Fill Supported</span>
-              </div>
+                              </div>
               <input
                 type="text"
                 required
@@ -318,32 +317,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all font-mono"
               />
 
-              {/* Quick Staff Selector to prevent any login friction */}
-              {availableEmployees.length > 0 && (
-                <div className="mt-2.5">
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        const emp = availableEmployees.find((item) => item.code === e.target.value);
-                        if (emp) {
-                          setIdentifier(emp.code);
-                          setPassword(emp.initialPassword || "Emp@2026");
-                          setErrorMessage(null);
-                        }
-                      }
-                    }}
-                    defaultValue=""
-                    className="w-full px-3 py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="" disabled>⚡ Quick Select Staff Name...</option>
-                    {availableEmployees.map((emp) => (
-                      <option key={emp.id || emp.code} value={emp.code}>
-                        {emp.name} ({emp.code}) {emp.phone && emp.phone.length > 5 ? `• ${emp.phone}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              
             </div>
 
             <div>

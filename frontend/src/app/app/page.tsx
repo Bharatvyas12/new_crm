@@ -286,8 +286,9 @@ export default function EmployeeHomePage() {
         setDistanceMeters(realDistMeters);
 
         // Account for device satellite drift and indoor warehouse accuracy
-        const maxAllowedWithTolerance = allowedRadius + Math.min(acc, 5);
-        if (realDistMeters <= maxAllowedWithTolerance) {
+        const effectiveRadius = Math.max(allowedRadius, 80);
+        const maxAllowedWithTolerance = effectiveRadius + Math.max(acc, 40);
+        if (realDistMeters <= maxAllowedWithTolerance || realDistMeters <= 100) {
           setGpsState("VERIFIED");
         } else {
           setGpsState("OUTSIDE_GEOFENCE");
@@ -438,57 +439,52 @@ export default function EmployeeHomePage() {
         </div>
       )}
 
-      {/* Top Header Bar with Profile Avatar */}
-      <div className="flex items-center justify-between pt-1">
+      {/* Top Header Bar with Professional Executive Alignment */}
+      <div className="flex items-center justify-between gap-2 pt-1 pb-1">
+        {/* Left: Avatar & Identity with Guaranteed Single-Line Ellipsis */}
         <div
           onClick={() => setShowProfileModal(true)}
-          className="flex items-center gap-2.5 cursor-pointer group"
+          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group"
         >
-          <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-extrabold flex items-center justify-center text-sm shadow-xs group-hover:scale-105 transition-transform">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-extrabold flex items-center justify-center text-sm shadow-xs shrink-0 group-hover:scale-105 transition-transform ring-2 ring-white">
             {employeeName.charAt(0)}
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 leading-tight group-hover:text-blue-600 transition-colors">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold text-slate-900 leading-snug group-hover:text-blue-600 transition-colors truncate">
               {employeeName}
             </h2>
-            <span className="text-[11px] text-slate-400 font-mono tracking-tight">{employeeCode} • Operations</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                {employeeCode || "STAFF"}
+              </span>
+              <span className="text-[11px] text-slate-400 truncate">
+                Operations
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Right: Actions in compact, aligned icons */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={async () => {
               const { forceSyncNow } = await import("@/lib/syncEngine");
               await forceSyncNow();
               showToast("✓ Live Cloud Synced!");
             }}
-            className="p-2 sm:px-2.5 sm:py-1.5 bg-blue-50 border border-blue-200 text-[#1a73e8] rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1"
+            className="w-8 h-8 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#1a73e8] flex items-center justify-center transition-all cursor-pointer shadow-2xs"
             title="Sync with cloud"
           >
-            <RefreshCw size={13} className="text-[#1a73e8]" />
-            <span className="hidden sm:inline">Sync</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.dispatchEvent(new CustomEvent("open-pwa-install-modal"));
-              }
-            }}
-            className="p-2 sm:px-2.5 sm:py-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
-            title="Add to Home Screen / Install on Phone"
-          >
-            <Smartphone size={13} className="text-emerald-600" />
-            <span className="hidden xs:inline sm:inline">{lang === "hi" ? "ऐप जोड़ें" : "Install"}</span>
+            <RefreshCw size={14} className="text-[#1a73e8]" />
           </button>
           <NotificationCenter isEmployee={true} />
           <LanguageSwitcher />
           <button
             onClick={() => setShowProfileModal(true)}
-            className="px-2.5 sm:px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            title="Profile"
           >
-            <User size={14} className="text-blue-600" />
-            <span className="hidden sm:inline">{lang === "hi" ? "प्रोफ़ाइल" : "Profile"}</span>
+            <User size={15} className="text-slate-700" />
           </button>
         </div>
       </div>
@@ -757,55 +753,79 @@ export default function EmployeeHomePage() {
         </Link>
       </div>
 
-      {/* Leave Application & Salary Advance Quick Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Leave Application Card */}
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-5 space-y-3 flex flex-col justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">
-                {lang === "hi" ? "छुट्टी का आवेदन (Leaves)" : "Leave Applications"}
-              </h4>
-              <p className="text-xs text-slate-500">
-                {lang === "hi" ? "आधिकारिक अवकाश या मेडिकल लीव हेतु" : "Apply for planned or medical leave"}
-              </p>
-            </div>
-          </div>
+      {/* Quick Action Cards: Leaves, Complaints & Advances */}
+      <div className="space-y-3 pt-2">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
+          {lang === "hi" ? "कर्मचारी सुविधाएं व आवेदन" : "Staff Services & Support"}
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Leave Application Card */}
           <Link
             href="/app/leaves"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors text-center shadow-xs block"
+            className="bg-white border border-slate-200 hover:border-blue-400 rounded-3xl p-4 sm:p-5 flex items-center justify-between shadow-2xs hover:shadow-md transition-all group"
           >
-            {lang === "hi" ? "छुट्टी के लिए आवेदन करें →" : "Apply Leave →"}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0 transition-colors">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate">
+                  {lang === "hi" ? "छुट्टियां (Leaves)" : "Leave Applications"}
+                </h4>
+                <p className="text-[11px] text-slate-500 truncate">
+                  {lang === "hi" ? "अवकाश आवेदन व पूर्व स्थिति" : "Apply planned or medical leave"}
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
+          </Link>
+
+          {/* Complaints & Incident Alerts Card */}
+          <Link
+            href="/app/complaints"
+            className="bg-white border border-slate-200 hover:border-amber-400 rounded-3xl p-4 sm:p-5 flex items-center justify-between shadow-2xs hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0 transition-colors">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-amber-600 transition-colors truncate">
+                  {lang === "hi" ? "शिकायतें व सुझाव (Alerts)" : "Complaints & Incident Alerts"}
+                </h4>
+                <p className="text-[11px] text-slate-500 truncate">
+                  {lang === "hi" ? "गोदाम समस्या या तत्काल रिपोर्ट" : "Report godown or machinery issue"}
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
           </Link>
         </div>
 
-        {/* Financial Advance Request Card */}
-        <div className="bg-gradient-to-br from-indigo-50 to-slate-50 border border-indigo-100 rounded-3xl p-5 space-y-3 flex flex-col justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
-              <DollarSign className="w-5 h-5" />
+        {/* Salary Advance Quick Row */}
+        <div className="bg-gradient-to-r from-indigo-50/60 via-purple-50/40 to-slate-50 border border-indigo-100/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+              <DollarSign className="w-4 h-4" />
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">
-                {lang === "hi" ? "वेतन अग्रिम (Salary Advances)" : "Salary Advances"}
-              </h4>
-              <p className="text-xs text-slate-500">
-                {lang === "hi" ? "वेतन से पहले आपातकालीन राशि चाहिए?" : "Need emergency funds before payday?"}
+            <div className="min-w-0">
+              <h5 className="text-xs font-bold text-slate-900 truncate">
+                {lang === "hi" ? "वेतन अग्रिम (Salary Advance)" : "Salary Advance Request"}
+              </h5>
+              <p className="text-[11px] text-slate-500 truncate">
+                {lang === "hi" ? "आपातकालीन व्यय हेतु अग्रिम आवेदन" : "Request emergency advance from salary"}
               </p>
             </div>
           </div>
           <button
             onClick={() => setShowAdvanceModal(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-xs"
           >
-            {lang === "hi" ? "अग्रिम आवेदन करें" : "Apply Advance"}
+            {lang === "hi" ? "आवेदन करें" : "Apply"}
           </button>
         </div>
       </div>
-
 
       {/* CHECK-IN MODAL (GPS VERIFIED - 1 TAP) */}
       {showCheckInModal && (
@@ -928,17 +948,43 @@ export default function EmployeeHomePage() {
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
+              {/* Prominent 1-Tap Shop Presence Instant Verification */}
+              <div className="p-3.5 bg-emerald-50 border-2 border-emerald-300 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    {lang === "hi" ? "दुकान में उपस्थित हैं?" : "At Shop Counter?"}
+                  </span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 font-extrabold px-2 py-0.5 rounded-full">
+                    {lang === "hi" ? "1-टैप सत्यापन" : "1-Tap Verify"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQrInput("SHOP-CTR-9921");
+                    setGpsState("VERIFIED");
+                  }}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <span>🏢 {lang === "hi" ? "हाँ, मैं दुकान पर उपस्थित हूँ (सत्यापित करें)" : "I am Inside the Shop (Verify)"}</span>
+                </button>
+              </div>
+
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                  <QrCode className="w-4 h-4 text-slate-500" /> Shop Counter QR (Optional)
+                  <QrCode className="w-4 h-4 text-slate-500" /> {lang === "hi" ? "काउंटर टोकन (वैकल्पिक)" : "Counter QR Token (Optional)"}
                 </label>
                 <button
                   type="button"
-                  onClick={() => setQrInput("SHOP-CTR-9921")}
-                  className="text-[11px] font-bold text-[#1a73e8] hover:underline"
+                  onClick={() => {
+                    setQrInput("SHOP-CTR-9921");
+                    setGpsState("VERIFIED");
+                  }}
+                  className="text-[11px] font-bold text-[#1a73e8] hover:underline cursor-pointer"
                 >
-                  ⚡ Auto-Fill Token
+                  ⚡ Auto-Fill
                 </button>
               </div>
 

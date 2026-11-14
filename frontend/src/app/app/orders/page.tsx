@@ -600,7 +600,7 @@ export default function EmployeeOrdersPage() {
         <button
           onClick={() => setTab("pool")}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            tab === "pool" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500"
+            tab === "pool" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500 hover:text-slate-900"
           }`}
         >
           <Package size={14} />
@@ -611,7 +611,7 @@ export default function EmployeeOrdersPage() {
         <button
           onClick={() => setTab("my")}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            tab === "my" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500"
+            tab === "my" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500 hover:text-slate-900"
           }`}
         >
           <Truck size={14} />
@@ -622,7 +622,7 @@ export default function EmployeeOrdersPage() {
         <button
           onClick={() => setTab("all")}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            tab === "all" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500"
+            tab === "all" ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-500 hover:text-slate-900"
           }`}
         >
           <Users size={14} />
@@ -631,6 +631,26 @@ export default function EmployeeOrdersPage() {
           </span>
         </button>
       </div>
+
+      {/* Helpful Pool vs All Orders Context Banner */}
+      {tab === "pool" && (
+        <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-2 text-xs text-blue-900 animate-in fade-in">
+          <div className="flex items-center gap-2 min-w-0">
+            <Package size={16} className="text-blue-600 shrink-0" />
+            <span className="truncate">
+              {lang === "hi"
+                ? `पूल में ${poolOrders.length} नया ऑर्डर क्लेम हेतु खुला है।`
+                : `${poolOrders.length} unclaimed order in pool.`}
+            </span>
+          </div>
+          <button
+            onClick={() => setTab("all")}
+            className="text-[11px] font-bold text-blue-700 hover:underline shrink-0 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs cursor-pointer"
+          >
+            {lang === "hi" ? `सभी ${allOrders.length} ऑर्डर्स देखें →` : `View All ${allOrders.length} Orders →`}
+          </button>
+        </div>
+      )}
 
       {/* Comprehensive Filtering & Sorting Bar for Staff */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-3 shadow-xs">

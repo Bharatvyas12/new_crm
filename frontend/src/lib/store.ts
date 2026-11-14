@@ -437,7 +437,7 @@ export const cleanBaselineStore: CRMStoreData = {
     address: "near tehsil office , kuchaman road , parbatsar 341512",
     latitude: 26.893062,
     longitude: 74.76912,
-    geofenceRadiusM: 10,
+    geofenceRadiusM: 80,
     shiftStart: "08:00",
     shiftEnd: "20:00",
     requiredDailyHours: 12,

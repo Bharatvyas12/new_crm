@@ -18,8 +18,6 @@ const employeeNav = [
   { href: "/app/attendance", labelKey: "attendance", defaultLabel: "Attendance", icon: Clock },
   { href: "/app/tasks", labelKey: "tasks", defaultLabel: "Tasks", icon: CheckSquare, badgeKey: "tasks" },
   { href: "/app/orders", labelKey: "orders", defaultLabel: "Orders", icon: Package, badgeKey: "orders" },
-  { href: "/app/leaves", labelKey: "leaves", defaultLabel: "Leaves", icon: Calendar },
-  { href: "/app/complaints", labelKey: "complaints", defaultLabel: "Alerts", icon: Bell },
 ];
 
 function parseTimeString(timeStr?: string): { hours: number; minutes: number } | null {
