@@ -286,19 +286,49 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
           }
         }
 
-        // 4. Preserve active shifts
+        // 4. Preserve active shifts with intelligent timestamp & date check
         let hasLocalShiftToSync = false;
-        if (prevStore && prevStore.activeShifts && Object.keys(prevStore.activeShifts).length > 0) {
-          const serverShiftKeys = new Set(Object.keys(payload.data.activeShifts || {}));
-          const missingShifts = Object.entries(prevStore.activeShifts).filter(([k]) => !serverShiftKeys.has(k));
-          if (missingShifts.length > 0) {
-            hasLocalShiftToSync = true;
+        const nowTs = Date.now();
+        const todayStrVal = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+        const todayISOVal = new Date().toISOString().split("T")[0];
+        const mergedShifts: Record<string, any> = {};
+
+        // Start with server shifts that belong to today (<24h)
+        for (const [k, s] of Object.entries(payload.data.activeShifts || {})) {
+          if (!s || typeof s !== "object") continue;
+          const sObj = s as any;
+          const sTs = Number(sObj.checkInTimestamp || 0);
+          const sDate = String(sObj.date || "");
+          const isRecent = sTs > 0 && (nowTs - sTs < 24 * 3600 * 1000);
+          const isToday = sDate === todayStrVal || sDate.includes(todayStrVal) || sDate === todayISOVal || isRecent;
+          if (isToday) {
+            mergedShifts[k] = s;
           }
-          payload.data.activeShifts = {
-            ...prevStore.activeShifts,
-            ...(payload.data.activeShifts || {}),
-          };
         }
+
+        // Overlay local shifts: local shift always wins if newer or missing on server
+        if (prevStore && prevStore.activeShifts && typeof prevStore.activeShifts === "object") {
+          for (const [k, l] of Object.entries(prevStore.activeShifts)) {
+            if (!l || typeof l !== "object") continue;
+            const lObj = l as any;
+            const lTs = Number(lObj.checkInTimestamp || 0);
+            const lDate = String(lObj.date || "");
+            const isRecent = lTs > 0 && (nowTs - lTs < 24 * 3600 * 1000);
+            const isToday = lDate === todayStrVal || lDate.includes(todayStrVal) || lDate === todayISOVal || isRecent;
+
+            if (isToday) {
+              const currentServerShift = mergedShifts[k];
+              const sTs = Number(currentServerShift?.checkInTimestamp || 0);
+              if (!currentServerShift || lTs >= sTs) {
+                mergedShifts[k] = l;
+                if (!currentServerShift || lTs > sTs) {
+                  hasLocalShiftToSync = true;
+                }
+              }
+            }
+          }
+        }
+        payload.data.activeShifts = mergedShifts;
 
         // 5. Preserve tasks
         if (prevStore && Array.isArray(prevStore.tasks) && prevStore.tasks.length > 0) {

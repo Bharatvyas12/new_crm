@@ -104,7 +104,7 @@ export default function AdminAttendanceRegisterPage() {
 
           const aDate = (a.date || "").trim();
           if (aDate === targetDateStr) return true;
-          if (isTargetToday && (aDate === todayStr || aDate === todayISO || aDate.includes("Nov 14"))) return true;
+          if (isTargetToday && (aDate === todayStr || aDate === todayISO || aDate.includes(todayStr.split(",")[0]))) return true;
 
           const dt = new Date(aDate);
           if (!isNaN(dt.getTime())) {
@@ -143,7 +143,7 @@ export default function AdminAttendanceRegisterPage() {
               shift.date === todayStr ||
               shift.date === targetDateStr ||
               shift.date === selectedDate ||
-              String(shift.date || "").includes("Nov 14") ||
+              String(shift.date || "").includes(todayStr.split(",")[0]) ||
               (shift.checkInTimestamp && Math.abs(Date.now() - Number(shift.checkInTimestamp)) < 24 * 3600 * 1000)
             )
           );

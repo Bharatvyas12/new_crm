@@ -346,7 +346,6 @@ export default function EmployeeHomePage() {
 
     // Immediately push live check-in to Cloud DB so Admin Register updates instantly
     import("@/lib/syncEngine").then((mod) => {
-      const { getCRMStore } = require("@/lib/store");
       mod.pushStoreToCloud(getCRMStore());
     });
   };
@@ -359,7 +358,6 @@ export default function EmployeeHomePage() {
       setShiftState("ON_BREAK");
       showToast(lang === "hi" ? "ब्रेक शुरू हुआ। ब्रेक टाइमर चालू है।" : "Break started. Break timer ticking.");
       import("@/lib/syncEngine").then((mod) => {
-        const { getCRMStore } = require("@/lib/store");
         mod.pushStoreToCloud(getCRMStore());
       });
     } else {
@@ -375,7 +373,6 @@ export default function EmployeeHomePage() {
       setShiftState("ACTIVE");
       showToast(lang === "hi" ? "ब्रेक समाप्त हुआ। कार्य पुनः शुरू हुआ।" : "Break ended. Resuming active work shift.");
       import("@/lib/syncEngine").then((mod) => {
-        const { getCRMStore } = require("@/lib/store");
         mod.pushStoreToCloud(getCRMStore());
       });
     }
@@ -390,7 +387,6 @@ export default function EmployeeHomePage() {
       if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);
       showToast(`✓ Checked out at ${shift.checkOutTime}. Full day attendance recorded!`);
       import("@/lib/syncEngine").then((mod) => {
-        const { getCRMStore } = require("@/lib/store");
         mod.pushStoreToCloud(getCRMStore());
       });
     }
