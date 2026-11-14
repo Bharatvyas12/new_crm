@@ -589,6 +589,86 @@ def _merge_active_shifts(existing_shifts: dict, incoming_shifts: dict) -> dict:
     return cleaned
 
 
+
+def _reconcile_active_shifts_and_attendance(data: Dict[str, Any]) -> None:
+    """Guarantees absolute synchronization between activeShifts and attendance on the backend."""
+    if not isinstance(data, dict):
+        return
+    today_str = datetime.now().strftime("%b %d, %Y")
+    now_ts = time.time() * 1000
+
+    active_shifts = data.setdefault("activeShifts", {})
+    attendance = data.setdefault("attendance", [])
+    if not isinstance(active_shifts, dict):
+        active_shifts = {}
+        data["activeShifts"] = active_shifts
+    if not isinstance(attendance, list):
+        attendance = []
+        data["attendance"] = attendance
+
+    att_map = {}
+    for idx, a in enumerate(attendance):
+        if isinstance(a, dict):
+            c = str(a.get("employeeCode") or "").strip().lower()
+            d = str(a.get("date") or "").strip()
+            if c and d:
+                att_map[(c, d)] = idx
+
+    # 1. From activeShifts to attendance
+    for code, shift in list(active_shifts.items()):
+        if isinstance(shift, dict) and shift.get("shiftState") in ("ACTIVE", "ON_BREAK"):
+            c = str(shift.get("employeeCode") or code).strip().lower()
+            shift_date = str(shift.get("date") or today_str).strip()
+            key = (c, shift_date)
+            if key in att_map:
+                existing = attendance[att_map[key]]
+                if isinstance(existing, dict):
+                    existing["status"] = "On Break" if shift.get("shiftState") == "ON_BREAK" else "Present"
+                    if shift.get("checkInTime"):
+                        existing["checkIn"] = shift["checkInTime"]
+                    if shift.get("distanceM") is not None:
+                        existing["distanceM"] = shift["distanceM"]
+            else:
+                new_att = {
+                    "id": f"att-sync-{c}-{int(time.time())}",
+                    "employeeCode": shift.get("employeeCode") or code,
+                    "employeeName": shift.get("employeeName") or "Staff",
+                    "department": shift.get("department") or "Operations",
+                    "date": shift_date,
+                    "checkIn": shift.get("checkInTime") or "09:00 AM",
+                    "checkOut": "—",
+                    "workedHours": 0.5,
+                    "overtimeHours": 0,
+                    "classification": "PARTIAL_DAY",
+                    "status": "On Break" if shift.get("shiftState") == "ON_BREAK" else "Present",
+                    "distanceM": shift.get("distanceM", 10),
+                }
+                attendance.append(new_att)
+                att_map[key] = len(attendance) - 1
+
+    # 2. From attendance to activeShifts
+    for a in attendance:
+        if isinstance(a, dict):
+            status = a.get("status")
+            checkout = str(a.get("checkOut") or "").strip()
+            date_val = str(a.get("date") or "").strip()
+            is_today = (date_val == today_str) or (today_str in date_val)
+            if is_today and status in ("Present", "On Break") and (not checkout or checkout in ("—", "-")):
+                code = str(a.get("employeeCode") or "").strip()
+                if code and code not in active_shifts:
+                    active_shifts[code] = {
+                        "employeeCode": code,
+                        "employeeName": a.get("employeeName") or "Staff",
+                        "department": a.get("department") or "Operations",
+                        "shiftState": "ON_BREAK" if status == "On Break" else "ACTIVE",
+                        "checkInTime": a.get("checkIn") or "09:00 AM",
+                        "checkInTimestamp": int(now_ts),
+                        "totalBreakSeconds": 0,
+                        "date": date_val,
+                        "distanceM": a.get("distanceM", 10),
+                    }
+
+
 class SyncPushPayload(BaseModel):
     data: Dict[str, Any]
     client_version: Optional[int] = None
@@ -753,6 +833,7 @@ async def get_cloud_store():
     """Returns the latest real-time CRM store and version instantly without hanging on suspended DB."""
     if not _store_cache or not _store_cache.get("employees"):
         _load_store_from_disk()
+    _reconcile_active_shifts_and_attendance(_store_cache)
     return {
         "status": "ok",
         "version": _store_version,
@@ -851,6 +932,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         key_field="code"
     )
 
+    _reconcile_active_shifts_and_attendance(incoming)
     merged = {
         "settings": incoming.get("settings", _store_cache.get("settings", baseline["settings"])),
         "employees": merged_employees if merged_employees else baseline["employees"],

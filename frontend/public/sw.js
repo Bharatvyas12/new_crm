@@ -1,5 +1,5 @@
 // Workforce CRM Service Worker for PWA Offline, Quick Launch & System Push Notifications
-const CACHE_NAME = "wcrm-pwa-v3";
+const CACHE_NAME = "wcrm-pwa-v5";
 const STATIC_ASSETS = [
   "/",
   "/app",
@@ -34,7 +34,7 @@ self.addEventListener("activate", (event) => {
 // Network-first strategy for dynamic data, cache fallback for assets
 self.addEventListener("fetch", (event) => {
   // Only handle GET requests and skip api sync requests from caching
-  if (event.request.method !== "GET" || event.request.url.includes("/api/")) {
+  if (event.request.method !== "GET" || event.request.url.includes("/api/") || event.request.url.includes("/_next/") || event.request.url.includes("/admin")) {
     return;
   }
 
