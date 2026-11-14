@@ -401,6 +401,21 @@ export default function AdminAttendanceRegisterPage() {
 
           <button
             type="button"
+            onClick={async () => {
+              if (window.confirm("क्या आप ब्राउज़र कैश साफ करके क्लाउड से 100% फ्रेश डेटा लोड करना चाहते हैं?")) {
+                const { resetAndResyncFromCloud } = await import("@/lib/syncEngine");
+                await resetAndResyncFromCloud();
+              }
+            }}
+            title="Purge local cache and hard-resync from Cloud"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+          >
+            <RefreshCw size={13} />
+            <span>Reset Cache & Sync</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleDayOffAutoCheckout}
             title="दुकान बंद होने पर सभी छूटे हुए कर्मचारियों का ऑटो चेक-आउट करें"
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer"

@@ -742,7 +742,24 @@ export const cleanBaselineStore: CRMStoreData = {
   deletedOrderIds: [],
 };
 
-export const STORAGE_KEY = "wcrm_unified_store_v4";
+export const OFFICIAL_STAFF_CODES = new Set([
+  "ADMIN001",
+  "E001",
+  "E002",
+  "E010",
+  "E009",
+  "E008",
+  "E004",
+  "EMPPAS15",
+  "R001",
+  "EMP09",
+  "EMP20",
+  "EMP30",
+  "EMP50",
+  "EMP035",
+]);
+
+export const STORAGE_KEY = "wcrm_unified_store_v5";
 export const DELETED_ORDERS_KEY = "wcrm_deleted_order_ids";
 
 export const getDeletedOrderIds = (): Set<string> => {
@@ -768,7 +785,7 @@ export const getCRMStore = (): CRMStoreData => {
   if (typeof window === "undefined") return cleanBaselineStore;
   try {
     // Purge deprecated v1, v2 and v3 test caches
-    ["wcrm_unified_store_v1", "wcrm_unified_store_v2", "wcrm_unified_store_v3", "wcrm_store_version", "wcrm_store_version_v3", "wcrm_store_updated_at", "wcrm_store_updated_at_v3"].forEach((k) => {
+    ["wcrm_unified_store_v1", "wcrm_unified_store_v2", "wcrm_unified_store_v3", "wcrm_unified_store_v4", "wcrm_store_version", "wcrm_store_version_v3", "wcrm_store_version_v4", "wcrm_store_updated_at", "wcrm_store_updated_at_v3", "wcrm_store_updated_at_v4"].forEach((k) => {
       if (localStorage.getItem(k)) localStorage.removeItem(k);
     });
 
@@ -802,9 +819,13 @@ export const getCRMStore = (): CRMStoreData => {
     });
     const effectiveOrders = Array.from(orderMap.values());
 
-    const effectiveEmployees = (Array.isArray(parsed.employees) && parsed.employees.length > 1)
+    const rawEmployees = (Array.isArray(parsed.employees) && parsed.employees.length > 0)
       ? parsed.employees
       : cleanBaselineStore.employees;
+    const sanitizedEmployees = rawEmployees.filter(
+      (e: any) => e && e.code && OFFICIAL_STAFF_CODES.has((e.code || "").toUpperCase())
+    );
+    const effectiveEmployees = sanitizedEmployees.length >= 1 ? sanitizedEmployees : cleanBaselineStore.employees;
 
     const result = {
       ...cleanBaselineStore,

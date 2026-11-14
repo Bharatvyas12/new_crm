@@ -1,11 +1,11 @@
 "use client";
 
 // Unified High-Speed Cross-Device Real-Time Cloud Synchronization Engine
-import { CRMStoreData, STORAGE_KEY } from "./store";
+import { CRMStoreData, STORAGE_KEY, OFFICIAL_STAFF_CODES } from "./store";
 import { sendSystemPhoneNotification, playNotificationTune } from "./phoneNotifications";
 
-const VERSION_KEY = "wcrm_store_version_v4";
-const UPDATED_AT_KEY = "wcrm_store_updated_at_v4";
+const VERSION_KEY = "wcrm_store_version_v5";
+const UPDATED_AT_KEY = "wcrm_store_updated_at_v5";
 let isSyncing = false;
 let syncInitialized = false;
 let pollingTimer: NodeJS.Timeout | null = null;
@@ -235,10 +235,17 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         const prevRaw = localStorage.getItem(STORAGE_KEY);
         const prevStore = prevRaw ? JSON.parse(prevRaw) : null;
 
-        // 1. Preserve local employees: Never allow cloud to wipe existing employees
+        // 1. Sanitize employees: strictly keep official 14 staff and purge any legacy dummy employees
+        if (Array.isArray(payload.data.employees)) {
+          payload.data.employees = payload.data.employees.filter(
+            (e: any) => e && e.code && OFFICIAL_STAFF_CODES.has((e.code || "").toUpperCase())
+          );
+        }
         if (prevStore && Array.isArray(prevStore.employees) && prevStore.employees.length > 0) {
-          const serverEmpCodes = new Set((payload.data.employees || []).map((e: any) => e.code));
-          const missingLocalEmps = prevStore.employees.filter((e: any) => e && e.code && !serverEmpCodes.has(e.code));
+          const serverEmpCodes = new Set((payload.data.employees || []).map((e: any) => (e.code || "").toUpperCase()));
+          const missingLocalEmps = prevStore.employees.filter(
+            (e: any) => e && e.code && OFFICIAL_STAFF_CODES.has((e.code || "").toUpperCase()) && !serverEmpCodes.has((e.code || "").toUpperCase())
+          );
           if (missingLocalEmps.length > 0) {
             payload.data.employees = [...(payload.data.employees || []), ...missingLocalEmps];
           }
@@ -479,4 +486,35 @@ export const initCloudSync = () => {
   // Expose helper on window for debugging/testing
   (window as any).wcrm_sync_now = () => forceSyncNow();
   (window as any).wcrm_play_sound = () => playLiveSoundNotification();
+};
+
+/**
+ * Hard-resets any stale/corrupted local caches, purges legacy dummy data, and re-syncs from Render
+ */
+export const resetAndResyncFromCloud = async (): Promise<boolean> => {
+  if (typeof window === "undefined") return false;
+  try {
+    [
+      "wcrm_unified_store_v1", "wcrm_unified_store_v2", "wcrm_unified_store_v3",
+      "wcrm_unified_store_v4", "wcrm_unified_store_v5",
+      "wcrm_store_version", "wcrm_store_version_v3", "wcrm_store_version_v4", "wcrm_store_version_v5",
+      "wcrm_store_updated_at", "wcrm_store_updated_at_v3", "wcrm_store_updated_at_v4", "wcrm_store_updated_at_v5",
+    ].forEach((k) => {
+      try { localStorage.removeItem(k); } catch {}
+    });
+
+    if ("caches" in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch {}
+    }
+
+    await pullStoreFromCloud(true);
+    window.location.reload();
+    return true;
+  } catch {
+    window.location.reload();
+    return false;
+  }
 };
