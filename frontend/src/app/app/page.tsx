@@ -51,6 +51,7 @@ import {
   resetShiftForEmployeeInStore,
 } from "@/lib/store";
 import { subscribeToWebPush } from "@/lib/phoneNotifications";
+import { pushStoreToCloud } from "@/lib/syncEngine";
 
 export default function EmployeeHomePage() {
   const { user, logout } = useAuth();
@@ -345,9 +346,7 @@ export default function EmployeeHomePage() {
     showToast(`✓ Check-In confirmed at ${shift.checkInTime} (${isQrValid ? "Shop Counter Verified" : `GPS Verified: ${distanceMeters}m`})!`);
 
     // Immediately push live check-in to Cloud DB so Admin Register updates instantly
-    import("@/lib/syncEngine").then((mod) => {
-      mod.pushStoreToCloud(getCRMStore());
-    });
+    pushStoreToCloud(getCRMStore());
   };
 
   const handleStartBreak = () => {
@@ -357,9 +356,7 @@ export default function EmployeeHomePage() {
     if (success) {
       setShiftState("ON_BREAK");
       showToast(lang === "hi" ? "ब्रेक शुरू हुआ। ब्रेक टाइमर चालू है।" : "Break started. Break timer ticking.");
-      import("@/lib/syncEngine").then((mod) => {
-        mod.pushStoreToCloud(getCRMStore());
-      });
+      pushStoreToCloud(getCRMStore());
     } else {
       showToast(lang === "hi" ? "ब्रेक शुरू नहीं हो सका। कृपया पहले चेक-इन करें।" : "Could not start break. Please check in first.");
     }
@@ -372,9 +369,7 @@ export default function EmployeeHomePage() {
     if (success) {
       setShiftState("ACTIVE");
       showToast(lang === "hi" ? "ब्रेक समाप्त हुआ। कार्य पुनः शुरू हुआ।" : "Break ended. Resuming active work shift.");
-      import("@/lib/syncEngine").then((mod) => {
-        mod.pushStoreToCloud(getCRMStore());
-      });
+      pushStoreToCloud(getCRMStore());
     }
   };
 
@@ -386,9 +381,7 @@ export default function EmployeeHomePage() {
       setShiftState("COMPLETED");
       if (shift.checkOutTime) setCheckOutTime(shift.checkOutTime);
       showToast(`✓ Checked out at ${shift.checkOutTime}. Full day attendance recorded!`);
-      import("@/lib/syncEngine").then((mod) => {
-        mod.pushStoreToCloud(getCRMStore());
-      });
+      pushStoreToCloud(getCRMStore());
     }
   };
 

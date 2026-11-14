@@ -101,10 +101,15 @@ export const pushStoreToCloud = async (
     })();
     const allDeletedOrders = Array.from(new Set([...localDeletedOrders, ...(options?.deletedOrderIds || [])]));
 
-    // Include tombstones in orders payload so backend explicitly purges them
+    // Include tombstones in orders payload so backend explicitly purges them & prune huge base64
     const cleanOrders = (storeData.orders || []).filter(
       (o: any) => o && o.id && !allDeletedOrders.includes(o.id) && !o.isDeleted
-    );
+    ).map((o: any) => {
+      if (o.receiptPhoto && typeof o.receiptPhoto === "string" && o.receiptPhoto.length > 50000) {
+        return { ...o, receiptPhoto: "uploaded_slip.jpg" };
+      }
+      return o;
+    });
     const tombstoneOrders = allDeletedOrders.map((id) => ({ id, isDeleted: true }));
     const outgoingData = {
       ...storeData,
