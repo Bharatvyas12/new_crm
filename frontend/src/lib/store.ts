@@ -1056,6 +1056,32 @@ export const disburseAdvanceInStore = (advanceId: string): { success: boolean; m
   };
 };
 
+export const submitCorrectionInStore = (data: {
+  employeeName: string;
+  employeeCode: string;
+  department?: string;
+  date: string;
+  requestedTime: string;
+  reason: string;
+}) => {
+  const store = getCRMStore();
+  const newCorr: CorrectionItem = {
+    id: `corr-${Date.now()}`,
+    employee: data.employeeName,
+    code: data.employeeCode,
+    department: data.department || "Operations",
+    date: data.date,
+    originalTime: "Missing / Incomplete",
+    requestedTime: data.requestedTime,
+    reason: data.reason,
+    status: "Pending",
+    submittedAt: "Just now",
+  };
+  store.corrections = [newCorr, ...(store.corrections || [])];
+  saveCRMStore(store);
+  return newCorr;
+};
+
 export const updateCorrectionStatusInStore = (
   correctionId: string,
   newStatus: "Approved" | "Rejected"

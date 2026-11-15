@@ -42,6 +42,7 @@ import { PhoneNotificationBanner } from "@/components/PhoneNotificationBanner";
 import {
   getCRMStore,
   applyAdvanceInStore,
+  submitCorrectionInStore,
   subscribeToCRMStore,
   checkInEmployeeInStore,
   startBreakInStore,
@@ -395,14 +396,29 @@ export default function EmployeeHomePage() {
     handleOpenCheckIn();
   };
 
-  const handleCorrectionSubmit = (e: React.FormEvent) => {
+  const handleCorrectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!correctionForm.reason.trim()) {
+      alert("Please provide a reason for the attendance correction");
+      return;
+    }
+    submitCorrectionInStore({
+      employeeName,
+      employeeCode,
+      department: currentEmployeeProfile?.department || "Operations",
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+      requestedTime: correctionForm.requestedTime,
+      reason: correctionForm.reason.trim(),
+    });
     setShowCorrectionModal(false);
-    showToast("Attendance correction request submitted to Admin.");
+    showToast("✓ Attendance correction request submitted to Admin!");
     setCorrectionForm({ requestedTime: "07:00 PM", reason: "" });
+    try {
+      await pushStoreToCloud(getCRMStore());
+    } catch {}
   };
 
-  const handleAdvanceSubmit = (e: React.FormEvent) => {
+  const handleAdvanceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!advanceForm.amount || Number(advanceForm.amount) <= 0) {
       alert("Please enter a valid advance amount");
@@ -412,7 +428,7 @@ export default function EmployeeHomePage() {
     applyAdvanceInStore({
       employee: employeeName,
       code: employeeCode,
-      department: "Operations",
+      department: currentEmployeeProfile?.department || "Operations",
       amount: Number(advanceForm.amount),
       reason: advanceForm.reason.trim() || "Emergency expense",
       mode: advanceForm.repaymentTerm,
@@ -425,6 +441,13 @@ export default function EmployeeHomePage() {
       repaymentTerm: "SALARY_DEDUCTION",
       reason: "",
     });
+
+    // Instantly push to Cloud database so Admin panel receives it immediately
+    try {
+      await pushStoreToCloud(getCRMStore());
+    } catch (err) {
+      console.error("Cloud push failed:", err);
+    }
   };
 
   const handlePasswordChange = (e: React.FormEvent) => {

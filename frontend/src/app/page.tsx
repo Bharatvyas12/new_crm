@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { getCRMStore, EmployeeItem, CRMStoreData, registerActiveSessionInStore } from "@/lib/store";
+import { getCRMStore, EmployeeItem, CRMStoreData, registerActiveSessionInStore, STORAGE_KEY } from "@/lib/store";
 import { pullStoreFromCloud, getApiBaseUrl } from "@/lib/syncEngine";
 import { unlockAudio } from "@/lib/phoneNotifications";
 import { Lock, ArrowRight, ShieldCheck, AlertTriangle, RefreshCw } from "lucide-react";
@@ -23,7 +23,7 @@ export default function LoginPage() {
   const [availableEmployees, setAvailableEmployees] = useState<EmployeeItem[]>([]);
   const [isLoadingStore, setIsLoadingStore] = useState(false);
 
-  const fetchCloudEmployees = async (): Promise<EmployeeItem[]> => {
+  const fetchCloudEmployees = async (timeoutMs: number = 3500): Promise<EmployeeItem[]> => {
     setIsLoadingStore(true);
     const localStore = getCRMStore();
     const localEmps: EmployeeItem[] = Array.isArray(localStore.employees) && localStore.employees.length > 0
@@ -31,11 +31,17 @@ export default function LoginPage() {
       : [];
 
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
       const baseUrl = getApiBaseUrl();
       const res = await fetch(`${baseUrl}/sync/store?_t=${Date.now()}`, {
         cache: "no-store",
         headers: { "Cache-Control": "no-cache" },
+        signal: controller.signal,
       });
+      clearTimeout(timer);
+
       if (res.ok) {
         const payload = await res.json();
         if (
@@ -44,7 +50,6 @@ export default function LoginPage() {
           Array.isArray(payload.data.employees) &&
           payload.data.employees.length > 0
         ) {
-          // Merge safely so existing local data is never erased
           const mergedMap = new Map<string, EmployeeItem>();
           localEmps.forEach((e) => {
             if (e && e.code) mergedMap.set(e.code.toLowerCase().trim(), e);
@@ -55,16 +60,16 @@ export default function LoginPage() {
           const mergedEmps = Array.from(mergedMap.values());
           payload.data.employees = mergedEmps;
 
-          localStorage.setItem("wcrm_unified_store_v4", JSON.stringify(payload.data));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload.data));
           if (payload.version) {
-            localStorage.setItem("wcrm_store_version_v4", String(payload.version));
+            localStorage.setItem("wcrm_store_version_v5", String(payload.version));
           }
           setAvailableEmployees(mergedEmps);
           return mergedEmps;
         }
       }
     } catch (e) {
-      console.warn("Direct cloud fetch note:", e);
+      console.warn("Direct cloud fetch note (using local cache):", e);
     } finally {
       setIsLoadingStore(false);
     }
@@ -83,8 +88,11 @@ export default function LoginPage() {
     setErrorMessage(null);
     unlockAudio(); // Unlock audio on user login gesture
 
-    // Fetch employees with safe fallback
-    const employees: EmployeeItem[] = await fetchCloudEmployees();
+    // INSTANT LOCAL-FIRST AUTH: Instant 0.01s login from local store without blocking on 40-50s cold cloud wakeups!
+    const localStore = getCRMStore();
+    let employees: EmployeeItem[] = (Array.isArray(localStore.employees) && localStore.employees.length > 0)
+      ? localStore.employees
+      : availableEmployees;
 
     const inputId = identifier.trim().toLowerCase();
     const cleanInputId = inputId.replace(/[\s\-_]/g, "");
@@ -269,7 +277,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={fetchCloudEmployees}
+              onClick={() => fetchCloudEmployees()}
               className="p-1.5 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-300 hover:text-white"
               title="Refresh Employees from Cloud"
             >

@@ -1,23 +1,59 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ListTodo, CheckCircle2, XCircle, Clock, User, Check, X, AlertCircle } from "lucide-react";
-import { getCRMStore, updateCorrectionStatusInStore, CorrectionItem } from "@/lib/store";
+import { ListTodo, CheckCircle2, XCircle, Clock, User, Check, X, AlertCircle, RefreshCw } from "lucide-react";
+import { getCRMStore, updateCorrectionStatusInStore, subscribeToCRMStore, CorrectionItem } from "@/lib/store";
+import { pullStoreFromCloud, pushStoreToCloud } from "@/lib/syncEngine";
 
 export default function CorrectionsPage() {
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const loadData = () => {
     const store = getCRMStore();
     setCorrections(store.corrections || []);
   };
 
+  const syncCorrectionsFromCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const data = await pullStoreFromCloud(true);
+      if (data && Array.isArray(data.corrections)) {
+        setCorrections(data.corrections);
+      } else {
+        loadData();
+      }
+      showToast("✓ Live attendance corrections synced from cloud");
+    } catch {
+      loadData();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
-    window.addEventListener("wcrm_store_updated", loadData);
-    return () => window.removeEventListener("wcrm_store_updated", loadData);
+    const unsub = subscribeToCRMStore(loadData);
+
+    // Initial fresh pull on mount
+    pullStoreFromCloud(true).then((data) => {
+      if (data && Array.isArray(data.corrections)) setCorrections(data.corrections);
+    });
+
+    // Auto pull every 3.5s to keep PC in real-time sync with employee mobile phones
+    const timer = setInterval(async () => {
+      const cloud = await pullStoreFromCloud(true);
+      if (cloud && Array.isArray(cloud.corrections)) {
+        setCorrections(cloud.corrections);
+      }
+    }, 3500);
+
+    return () => {
+      unsub();
+      clearInterval(timer);
+    };
   }, []);
 
   const showToast = (msg: string) => {
@@ -30,6 +66,7 @@ export default function CorrectionsPage() {
     if (success) {
       loadData();
       showToast(`✓ Attendance correction request ${newStatus.toUpperCase()} and permanently saved!`);
+      pushStoreToCloud(getCRMStore());
     }
   };
 
@@ -81,6 +118,15 @@ export default function CorrectionsPage() {
             Review, approve or reject employee timestamp fixes. Approved requests recompute work hours automatically.
           </p>
         </div>
+        <button
+          onClick={syncCorrectionsFromCloud}
+          disabled={isSyncing}
+          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          title="Sync latest corrections from Cloud"
+        >
+          <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+          <span>{isSyncing ? "Syncing..." : "Sync Live Corrections"}</span>
+        </button>
       </div>
 
       {/* Filter Tabs */}

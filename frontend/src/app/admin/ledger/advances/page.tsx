@@ -12,23 +12,60 @@ import {
   X,
   Check,
   FileText,
+  RefreshCw,
 } from "lucide-react";
+import { pullStoreFromCloud, pushStoreToCloud } from "@/lib/syncEngine";
 import Link from "next/link";
 import { getCRMStore, saveCRMStore, disburseAdvanceInStore, subscribeToCRMStore, AdvanceRequest } from "@/lib/store";
 
 export default function AdvancesPage() {
   const [advances, setAdvances] = useState<AdvanceRequest[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const loadData = () => {
     const store = getCRMStore();
     setAdvances(store.advances || []);
   };
 
+  const syncAdvancesFromCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const data = await pullStoreFromCloud(true);
+      if (data && Array.isArray(data.advances)) {
+        setAdvances(data.advances);
+      } else {
+        loadData();
+      }
+      showToast("✓ Live staff advances synced from cloud");
+    } catch {
+      loadData();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
     const unsubscribe = subscribeToCRMStore(loadData);
-    return () => unsubscribe();
+
+    // Initial fresh pull on mount
+    pullStoreFromCloud(true).then((data) => {
+      if (data && Array.isArray(data.advances)) setAdvances(data.advances);
+    });
+
+    // Auto pull every 3.5s to keep PC in real-time sync with employee mobile phones
+    const timer = setInterval(async () => {
+      const cloud = await pullStoreFromCloud(true);
+      if (cloud && Array.isArray(cloud.advances)) {
+        setAdvances(cloud.advances);
+      }
+    }, 3500);
+
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
   }, []);
 
   const showToast = (msg: string) => {
@@ -41,6 +78,7 @@ export default function AdvancesPage() {
     if (res.success) {
       showToast(res.message);
       loadData();
+      pushStoreToCloud(getCRMStore());
     }
   };
 
@@ -51,6 +89,7 @@ export default function AdvancesPage() {
       target.status = "Rejected";
       saveCRMStore(store);
       loadData();
+      pushStoreToCloud(getCRMStore());
       showToast(`Advance request for ${adv.employee} rejected.`);
     }
   };
@@ -78,13 +117,24 @@ export default function AdvancesPage() {
             Review employee advance applications, authorize disbursements, and track auto-deduction schedules.
           </p>
         </div>
-        <Link
-          href="/admin/ledger"
-          className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
-        >
-          <FileText size={16} />
-          <span>View Master Ledger →</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={syncAdvancesFromCloud}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            title="Sync latest advances from Cloud"
+          >
+            <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+            <span>{isSyncing ? "Syncing..." : "Sync Live Advances"}</span>
+          </button>
+          <Link
+            href="/admin/ledger"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+          >
+            <FileText size={16} />
+            <span>View Master Ledger →</span>
+          </Link>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
