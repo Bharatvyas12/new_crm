@@ -468,10 +468,40 @@ async def load_store_from_postgres() -> bool:
                     pg_data.get("attendance", []),
                     key_field="id"
                 )
-                merged_shifts = {
-                    **pg_data.get("activeShifts", {}),
-                    **_store_cache.get("activeShifts", {}),
-                }
+                merged_leaves = _merge_item_lists(
+                    _store_cache.get("leaves", []),
+                    pg_data.get("leaves", []),
+                    key_field="id"
+                )
+                merged_tasks = _merge_item_lists(
+                    _store_cache.get("tasks", []),
+                    pg_data.get("tasks", []),
+                    key_field="id"
+                )
+                merged_complaints = _merge_item_lists(
+                    _store_cache.get("complaints", []),
+                    pg_data.get("complaints", []),
+                    key_field="id"
+                )
+                merged_corrections = _merge_item_lists(
+                    _store_cache.get("corrections", []),
+                    pg_data.get("corrections", []),
+                    key_field="id"
+                )
+                merged_advances = _merge_item_lists(
+                    _store_cache.get("advances", []),
+                    pg_data.get("advances", []),
+                    key_field="id"
+                )
+                merged_ledger = _merge_item_lists(
+                    _store_cache.get("ledger", []),
+                    pg_data.get("ledger", []),
+                    key_field="id"
+                )
+                merged_shifts = _merge_active_shifts(
+                    pg_data.get("activeShifts", {}),
+                    _store_cache.get("activeShifts", {})
+                )
 
                 _store_cache = {
                     **pg_data,
@@ -480,6 +510,12 @@ async def load_store_from_postgres() -> bool:
                     "employees": merged_employees if merged_employees else _store_cache.get("employees", []),
                     "attendance": merged_attendance,
                     "activeShifts": merged_shifts,
+                    "leaves": merged_leaves,
+                    "tasks": merged_tasks,
+                    "complaints": merged_complaints,
+                    "corrections": merged_corrections,
+                    "advances": merged_advances,
+                    "ledger": merged_ledger,
                     "settings": {**(pg_data.get("settings") or {}), **(_store_cache.get("settings") or {})},
                 }
                 _store_version = max(_store_version, record.version or 1)
@@ -533,12 +569,53 @@ async def save_store_to_postgres() -> bool:
                     _store_cache.get("attendance", []),
                     key_field="id"
                 )
+                merged_leaves = _merge_item_lists(
+                    existing_data.get("leaves", []),
+                    _store_cache.get("leaves", []),
+                    key_field="id"
+                )
+                merged_tasks = _merge_item_lists(
+                    existing_data.get("tasks", []),
+                    _store_cache.get("tasks", []),
+                    key_field="id"
+                )
+                merged_complaints = _merge_item_lists(
+                    existing_data.get("complaints", []),
+                    _store_cache.get("complaints", []),
+                    key_field="id"
+                )
+                merged_corrections = _merge_item_lists(
+                    existing_data.get("corrections", []),
+                    _store_cache.get("corrections", []),
+                    key_field="id"
+                )
+                merged_advances = _merge_item_lists(
+                    existing_data.get("advances", []),
+                    _store_cache.get("advances", []),
+                    key_field="id"
+                )
+                merged_ledger = _merge_item_lists(
+                    existing_data.get("ledger", []),
+                    _store_cache.get("ledger", []),
+                    key_field="id"
+                )
+                merged_shifts = _merge_active_shifts(
+                    existing_data.get("activeShifts", {}),
+                    _store_cache.get("activeShifts", {})
+                )
                 merged_payload = {
                     **existing_data,
                     **_store_cache,
                     "orders": _sanitize_orders(merged_orders),
                     "employees": merged_employees,
                     "attendance": merged_attendance,
+                    "activeShifts": merged_shifts,
+                    "leaves": merged_leaves,
+                    "tasks": merged_tasks,
+                    "complaints": merged_complaints,
+                    "corrections": merged_corrections,
+                    "advances": merged_advances,
+                    "ledger": merged_ledger,
                 }
                 record.version = max(record.version or 1, _store_version)
                 record.updated_at = _store_updated_at
@@ -932,7 +1009,6 @@ async def update_cloud_store(payload: SyncPushPayload):
         key_field="code"
     )
 
-    _reconcile_active_shifts_and_attendance(incoming)
     merged = {
         "settings": incoming.get("settings", _store_cache.get("settings", baseline["settings"])),
         "employees": merged_employees if merged_employees else baseline["employees"],
@@ -949,6 +1025,7 @@ async def update_cloud_store(payload: SyncPushPayload):
         "deletedOrderIds": all_deleted_orders,
         "_push_subscriptions": _push_subscriptions,
     }
+    _reconcile_active_shifts_and_attendance(merged)
 
     _store_cache = merged
     _store_version += 1

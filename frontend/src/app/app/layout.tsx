@@ -49,6 +49,13 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
     }
   }, [user, isLoading, router]);
 
+  // Ensure continuous cross-device cloud sync on employee mobile phones
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      import("@/lib/syncEngine").then((mod) => mod.initCloudSync());
+    }
+  }, []);
+
   // Single Device Session Lock Listener (Auto-logout if logged in on another device)
   useEffect(() => {
     if (!user || user.role === "ADMIN") return;

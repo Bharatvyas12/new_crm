@@ -135,6 +135,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (typeof window !== "undefined") {
       const unlocked = sessionStorage.getItem("wcrm_admin_unlocked") === "true";
       setIsAdminUnlocked(unlocked);
+      import("@/lib/syncEngine").then((mod) => mod.initCloudSync());
     }
   }, []);
 

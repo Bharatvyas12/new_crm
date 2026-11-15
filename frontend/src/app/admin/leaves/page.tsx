@@ -1,5 +1,6 @@
 "use client";
 
+
 import React, { useState, useEffect } from "react";
 import {
   CheckCircle2,
@@ -16,7 +17,9 @@ import {
   FileText,
   AlertTriangle,
 } from "lucide-react";
-import { getCRMStore, saveCRMStore, updateLeaveStatusInStore, LeaveRequest } from "@/lib/store";
+import { getCRMStore, saveCRMStore, updateLeaveStatusInStore, subscribeToCRMStore, LeaveRequest } from "@/lib/store";
+import { pullStoreFromCloud, pushStoreToCloud } from "@/lib/syncEngine";
+import { RefreshCw } from "lucide-react";
 
 export default function LeavesPage() {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
@@ -46,10 +49,46 @@ export default function LeavesPage() {
     setLeaves(store.leaves || []);
   };
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const syncLeavesFromCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const data = await pullStoreFromCloud(true);
+      if (data && Array.isArray(data.leaves)) {
+        setLeaves(data.leaves);
+      } else {
+        loadData();
+      }
+      showToast("✓ Live leaves synced from cloud");
+    } catch {
+      loadData();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
-    window.addEventListener("wcrm_store_updated", loadData);
-    return () => window.removeEventListener("wcrm_store_updated", loadData);
+    const unsub = subscribeToCRMStore(loadData);
+    
+    // Initial immediate pull on mount
+    pullStoreFromCloud(true).then((data) => {
+      if (data && Array.isArray(data.leaves)) setLeaves(data.leaves);
+    });
+
+    // Auto pull every 3.5s to keep admin in real-time sync with employee mobile phones
+    const timer = setInterval(async () => {
+      const cloud = await pullStoreFromCloud(true);
+      if (cloud && Array.isArray(cloud.leaves)) {
+        setLeaves(cloud.leaves);
+      }
+    }, 3500);
+
+    return () => {
+      unsub();
+      clearInterval(timer);
+    };
   }, []);
 
   const showToast = (msg: string) => {
@@ -60,6 +99,7 @@ export default function LeavesPage() {
   const handleApprove = (leave: LeaveRequest) => {
     updateLeaveStatusInStore(leave.id, "APPROVED");
     loadData();
+    pushStoreToCloud(getCRMStore());
     if (selectedLeave?.id === leave.id) {
       setSelectedLeave({ ...selectedLeave, status: "APPROVED" });
     }
@@ -69,6 +109,7 @@ export default function LeavesPage() {
   const handleReject = (leave: LeaveRequest) => {
     updateLeaveStatusInStore(leave.id, "REJECTED");
     loadData();
+    pushStoreToCloud(getCRMStore());
     if (selectedLeave?.id === leave.id) {
       setSelectedLeave({ ...selectedLeave, status: "REJECTED" });
     }

@@ -27,6 +27,7 @@ import {
   LeaveRequest,
   EmployeeItem,
 } from "@/lib/store";
+import { pushStoreToCloud, pullStoreFromCloud } from "@/lib/syncEngine";
 
 export default function EmployeeLeavesPage() {
   const { user } = useAuth();
@@ -76,6 +77,8 @@ export default function EmployeeLeavesPage() {
   useEffect(() => {
     loadData();
     const unsub = subscribeToCRMStore(loadData);
+    // Fresh pull on page load so balances and statuses are real-time
+    pullStoreFromCloud(true).then(() => loadData());
     return () => unsub();
   }, [user]);
 
@@ -98,7 +101,7 @@ export default function EmployeeLeavesPage() {
   const casualRemaining = employee ? employee.casualLeaves ?? 12 : 12;
   const sickRemaining = employee ? employee.sickLeaves ?? 8 : 8;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) {
       showToast(lang === "hi" ? "कृपया छुट्टी का कारण लिखें।" : "Please specify a reason for leave.");
@@ -122,6 +125,9 @@ export default function EmployeeLeavesPage() {
         days: daysCount,
         reason: reason.trim(),
       });
+
+      // Instantly push to Cloud database so Admin panel sees it in real-time
+      await pushStoreToCloud(getCRMStore());
 
       showToast(
         lang === "hi"

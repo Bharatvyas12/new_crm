@@ -105,7 +105,7 @@ export const pushStoreToCloud = async (
     const cleanOrders = (storeData.orders || []).filter(
       (o: any) => o && o.id && !allDeletedOrders.includes(o.id) && !o.isDeleted
     ).map((o: any) => {
-      if (o.receiptPhoto && typeof o.receiptPhoto === "string" && o.receiptPhoto.length > 50000) {
+      if (o.receiptPhoto && typeof o.receiptPhoto === "string" && o.receiptPhoto.length > 500) {
         return { ...o, receiptPhoto: "uploaded_slip.jpg" };
       }
       return o;
@@ -349,21 +349,80 @@ export const pullStoreFromCloud = async (force: boolean = false): Promise<CRMSto
         }
         payload.data.activeShifts = mergedShifts;
 
-        // 5. Preserve tasks
+        // 5. Preserve tasks & sync to cloud
+        let hasLocalTasksToSync = false;
         if (prevStore && Array.isArray(prevStore.tasks) && prevStore.tasks.length > 0) {
           const serverTaskIds = new Set((payload.data.tasks || []).map((t: any) => t.id));
           const validLocalTasks = prevStore.tasks.filter((t: any) => t && t.id && !serverTaskIds.has(t.id));
           if (validLocalTasks.length > 0) {
             payload.data.tasks = [...validLocalTasks, ...(payload.data.tasks || [])];
+            hasLocalTasksToSync = true;
           }
         }
 
-        if (hasLocalOrdersToSync || hasLocalAttToSync || hasLocalShiftToSync) {
-          // Push merged state back to cloud so server catches up immediately
+        // 6. Preserve leaves & sync to cloud (prevents employee leaves from being wiped by polling)
+        let hasLocalLeavesToSync = false;
+        if (prevStore && Array.isArray(prevStore.leaves) && prevStore.leaves.length > 0) {
+          const serverLeaveIds = new Set((payload.data.leaves || []).map((l: any) => l.id));
+          const validLocalLeaves = prevStore.leaves.filter((l: any) => l && l.id && !serverLeaveIds.has(l.id));
+          if (validLocalLeaves.length > 0) {
+            payload.data.leaves = [...validLocalLeaves, ...(payload.data.leaves || [])];
+            hasLocalLeavesToSync = true;
+          }
+        }
+
+        // 7. Preserve complaints & sync to cloud
+        let hasLocalComplaintsToSync = false;
+        if (prevStore && Array.isArray(prevStore.complaints) && prevStore.complaints.length > 0) {
+          const serverCompIds = new Set((payload.data.complaints || []).map((c: any) => c.id));
+          const validLocalComplaints = prevStore.complaints.filter((c: any) => c && c.id && !serverCompIds.has(c.id));
+          if (validLocalComplaints.length > 0) {
+            payload.data.complaints = [...validLocalComplaints, ...(payload.data.complaints || [])];
+            hasLocalComplaintsToSync = true;
+          }
+        }
+
+        // 8. Preserve corrections & sync to cloud
+        let hasLocalCorrectionsToSync = false;
+        if (prevStore && Array.isArray(prevStore.corrections) && prevStore.corrections.length > 0) {
+          const serverCorrIds = new Set((payload.data.corrections || []).map((c: any) => c.id));
+          const validLocalCorrections = prevStore.corrections.filter((c: any) => c && c.id && !serverCorrIds.has(c.id));
+          if (validLocalCorrections.length > 0) {
+            payload.data.corrections = [...validLocalCorrections, ...(payload.data.corrections || [])];
+            hasLocalCorrectionsToSync = true;
+          }
+        }
+
+        // 9. Preserve advances & sync to cloud
+        let hasLocalAdvancesToSync = false;
+        if (prevStore && Array.isArray(prevStore.advances) && prevStore.advances.length > 0) {
+          const serverAdvIds = new Set((payload.data.advances || []).map((a: any) => a.id));
+          const validLocalAdvances = prevStore.advances.filter((a: any) => a && a.id && !serverAdvIds.has(a.id));
+          if (validLocalAdvances.length > 0) {
+            payload.data.advances = [...validLocalAdvances, ...(payload.data.advances || [])];
+            hasLocalAdvancesToSync = true;
+          }
+        }
+
+        // 10. Preserve ledger
+        if (prevStore && Array.isArray(prevStore.ledger) && prevStore.ledger.length > 0) {
+          const serverLedgerIds = new Set((payload.data.ledger || []).map((e: any) => e.id));
+          const validLocalLedger = prevStore.ledger.filter((e: any) => e && e.id && !serverLedgerIds.has(e.id));
+          if (validLocalLedger.length > 0) {
+            payload.data.ledger = [...validLocalLedger, ...(payload.data.ledger || [])];
+          }
+        }
+
+        const needsCloudPush = hasLocalOrdersToSync || hasLocalAttToSync || hasLocalShiftToSync || 
+                               hasLocalLeavesToSync || hasLocalTasksToSync || hasLocalComplaintsToSync || 
+                               hasLocalCorrectionsToSync || hasLocalAdvancesToSync;
+
+        if (needsCloudPush) {
+          // Push merged state back to cloud so server catches up immediately without losing any device's data
           setTimeout(() => {
             const fullStore = { ...prevStore, ...payload.data };
             pushStoreToCloud(fullStore, { deletedOrderIds: Array.from(localDeletedOrdersSet) });
-          }, 400);
+          }, 300);
         }
 
         // Save safely merged store to local storage
